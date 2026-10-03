@@ -12,7 +12,7 @@ export default async function NewOrderPage({ searchParams }: PageProps<"/orders/
   const preset = typeof tagId === "string" ? catalog.filter((z) => z.tagId === tagId) : [];
   return (
     <>
-      <PageHeader step={1} title="New order" subtitle="Scan a tag to add its sizes." />
+      <PageHeader step={1} back={{ href: "/", label: "Home" }} title="New order" subtitle="Scan a tag to add its sizes." />
       <OrderClient catalog={catalog} preset={preset} />
     </>
   );

@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { Plus, Tag } from "lucide-react";
+import { Camera, Tag } from "lucide-react";
 import { requireUser } from "@/lib/session";
 import { listSizes, listTags } from "@/lib/store/data";
 import { formatINR } from "@/lib/money";
-import { formatDateTime } from "@/lib/dates";
-import { Card, EmptyState, PageHeader, PrimaryLink } from "@/components/ui";
+import { formatDate } from "@/lib/dates";
+import { EmptyState, PageHeader } from "@/components/ui";
 
-export const metadata = { title: "Tags" };
+export const metadata = { title: "Saved tags" };
 
 export default async function TagsPage() {
   await requireUser();
@@ -15,11 +15,11 @@ export default async function TagsPage() {
   const header = (
     <PageHeader
       title="Saved tags"
-      subtitle="Every article saved from a supplier tag, with its sizes and rates."
+      subtitle={tags.length ? `${tags.length} article${tags.length === 1 ? "" : "s"} with sizes and rates` : undefined}
       action={
-        <PrimaryLink href="/tags/new">
-          <Plus size={18} /> Add a new tag
-        </PrimaryLink>
+        <Link href="/tags/new" className="btn btn-outline">
+          <Camera size={18} /> Add tag
+        </Link>
       }
     />
   );
@@ -28,11 +28,7 @@ export default async function TagsPage() {
     return (
       <>
         {header}
-        <EmptyState
-          title="No tags yet"
-          body="Take a photo of a supplier tag. The app reads the article code, sizes and rates and saves them."
-          cta={{ href: "/tags/new", label: "Add your first tag" }}
-        />
+        <EmptyState icon={Tag} title="No tags yet" body="Scan a supplier tag. The article code, sizes and rates are saved for next time." cta={{ href: "/tags/new", label: "Scan a tag" }} />
       </>
     );
   }
@@ -44,31 +40,28 @@ export default async function TagsPage() {
         {tags.map((t) => {
           const rows = sizes.filter((z) => z.tagId === t.id);
           return (
-            <Link key={t.id} href={`/tags/${t.id}`} className="group">
-              <Card className="flex h-full gap-4 p-4 transition-colors group-hover:border-accent">
-                {t.imageUrl ? (
-                  // Tag photos come from Supabase Storage at unknown sizes, so plain img.
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={t.imageUrl} alt="" className="h-24 w-20 shrink-0 rounded-xl border border-line object-cover" />
-                ) : (
-                  <div className="grid h-24 w-20 shrink-0 place-items-center rounded-xl border border-line bg-black/[0.03]">
-                    <Tag className="text-muted" size={26} />
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-lg font-bold">{t.designNo}</p>
-                  <p className="truncate text-sm text-muted">{[t.brand, t.fabric].filter(Boolean).join(" · ")}</p>
-                  <p className="truncate text-sm text-muted">{t.supplierName}</p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {rows.map((z) => (
-                      <span key={z.id} className="rounded-lg bg-accent-soft px-2 py-0.5 text-sm font-semibold text-accent tnum">
-                        {z.size} · {formatINR(z.rate)}
-                      </span>
-                    ))}
-                  </div>
-                  <p className="mt-2 text-xs text-muted tnum">Added {formatDateTime(t.createdAt)}</p>
+            <Link key={t.id} href={`/tags/${t.id}`} className="card flex gap-4 p-3.5 transition-colors hover:border-accent">
+              {t.imageUrl ? (
+                // Tag photos come from Supabase Storage at unknown sizes, so plain img.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={t.imageUrl} alt="" className="h-[5.5rem] w-[4.5rem] shrink-0 rounded-xl bg-background object-cover" />
+              ) : (
+                <div className="grid h-[5.5rem] w-[4.5rem] shrink-0 place-items-center rounded-xl bg-background">
+                  <Tag className="text-muted" size={24} />
                 </div>
-              </Card>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[1.05rem] font-extrabold">{t.designNo}</p>
+                <p className="truncate text-sm text-muted">{t.supplierName}</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {rows.map((z) => (
+                    <span key={z.id} className="rounded-lg bg-accent-soft px-2 py-0.5 text-xs font-bold text-accent tnum">
+                      {z.size} · {formatINR(z.rate)}
+                    </span>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-xs text-muted">{formatDate(t.createdAt)}</p>
+              </div>
             </Link>
           );
         })}

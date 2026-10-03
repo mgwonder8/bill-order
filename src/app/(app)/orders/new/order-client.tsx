@@ -2,11 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Loader2, Minus, Plus, Search, Trash2, XCircle } from "lucide-react";
+import { CheckCircle2, Loader2, Minus, Plus, Search, ShoppingBag, Trash2, XCircle } from "lucide-react";
 import { formatINR, lineMoney } from "@/lib/money";
 import type { ArticleSize, Order, OrderItem } from "@/lib/types";
 import { TagScanner, type SavedTag } from "@/components/tag-scanner";
-import { StepBadge } from "@/components/ui";
 
 type Line = {
   key: string;
@@ -189,15 +188,12 @@ export function OrderClient({
   return (
     <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,400px)_minmax(0,1fr)] xl:items-start">
       <div className="space-y-5 xl:sticky xl:top-6">
-        <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-          <h2 className="mb-3 flex items-center gap-2 text-lg font-bold">
-            <StepBadge n={1} small /> Scan the tag
-          </h2>
+        <section className="card p-4">
           <TagScanner onSaved={onTagSaved} saveLabel="Save & add to order" />
           {toast && (
             <p
-              className={`rise mt-3 flex items-center gap-2 rounded-xl px-3 py-2.5 text-base font-semibold ${
-                toast.tone === "ok" ? "bg-ok/10 text-ok" : "bg-accent-soft text-accent"
+              className={`rise mt-3 flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold ${
+                toast.tone === "ok" ? "bg-ok-soft text-ok" : "bg-danger-soft text-danger"
               }`}
             >
               {toast.tone === "ok" ? <CheckCircle2 size={20} /> : <XCircle size={20} />}
@@ -206,8 +202,8 @@ export function OrderClient({
           )}
         </section>
 
-        <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-          <h2 className="text-base font-bold">Already saved? Pick the article</h2>
+        <section className="card p-4">
+          <h2 className="font-bold">Already saved? Pick it</h2>
           <div className="relative mt-2">
             <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={18} />
             <input
@@ -247,15 +243,18 @@ export function OrderClient({
         </section>
       </div>
 
-      <div className="space-y-5 pb-28 lg:pb-0">
-        <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm md:p-5">
-          <h2 className="flex items-center gap-2 text-lg font-bold">
-            <StepBadge n={2} small /> Items in this order
-            {lines.length > 0 && <span className="text-base font-normal text-muted">({lines.length})</span>}
+      <div className="space-y-5 pb-28 md:pb-0">
+        <section className="card p-4 md:p-5">
+          <h2 className="font-bold">
+            Items in this order
+            {lines.length > 0 && <span className="ml-1.5 font-semibold text-muted">{lines.length}</span>}
           </h2>
 
           {lines.length === 0 ? (
-            <p className="py-10 text-center text-base text-muted">Scan a tag to add its sizes here.</p>
+            <div className="py-10 text-center">
+              <ShoppingBag className="mx-auto text-line" size={40} strokeWidth={1.5} />
+              <p className="mt-2 text-sm text-muted">Scan a tag and its sizes appear here.</p>
+            </div>
           ) : (
             <ul className="mt-3 space-y-3">
               {lines.map((l) => {
@@ -264,21 +263,17 @@ export function OrderClient({
                   <li key={l.key} className="rise rounded-xl border border-line p-3">
                     <div className="flex items-start gap-3">
                       <div className="min-w-0 flex-1">
-                        <p className="text-lg font-bold">
-                          {l.articleCode} <span className="font-semibold text-accent">· Size {l.size}</span>
+                        <p className="font-extrabold">
+                          {l.articleCode} <span className="font-bold text-accent">· {l.size}</span>
                         </p>
-                        <p className="text-sm text-muted">
-                          {[l.brand, l.fabric, l.supplierName].filter(Boolean).join(" · ") || "Not in saved tags"}
-                        </p>
-                        <p className="text-sm text-muted">
-                          {formatINR(l.rate)} per piece · 1 set = {l.pcsPerSet} pcs
-                          {l.sizes && ` (${l.sizes.replaceAll("/", ", ")})`}
+                        <p className="truncate text-sm text-muted">
+                          {formatINR(l.rate)}/pc · 1 set = {l.pcsPerSet} pcs{l.supplierName && ` · ${l.supplierName}`}
                         </p>
                       </div>
                       <button
                         type="button"
                         onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}
-                        className="btn btn-outline btn-sm px-2.5"
+                        className="grid h-9 w-9 place-items-center rounded-lg text-muted hover:bg-danger-soft hover:text-danger"
                         aria-label={`Remove ${l.articleCode} size ${l.size}`}
                       >
                         <Trash2 size={17} />
@@ -286,11 +281,12 @@ export function OrderClient({
                     </div>
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
-                        <button type="button" className="btn btn-outline px-3" onClick={() => setSets(l.key, l.sets - 1)} aria-label="One set less">
+                        <div className="flex items-center rounded-xl border border-line">
+                        <button type="button" className="grid h-11 w-11 place-items-center rounded-l-xl text-foreground active:bg-black/[0.05]" onClick={() => setSets(l.key, l.sets - 1)} aria-label="One set less">
                           <Minus size={18} />
                         </button>
                         <input
-                          className="field w-20 text-center text-lg font-bold tnum"
+                          className="h-11 w-14 border-x border-line bg-transparent text-center text-lg font-extrabold outline-none tnum"
                           type="number"
                           inputMode="numeric"
                           min="1"
@@ -298,14 +294,15 @@ export function OrderClient({
                           onChange={(e) => setSets(l.key, Number(e.target.value))}
                           aria-label="Number of sets"
                         />
-                        <button type="button" className="btn btn-outline px-3" onClick={() => setSets(l.key, l.sets + 1)} aria-label="One set more">
+                        <button type="button" className="grid h-11 w-11 place-items-center rounded-r-xl text-accent active:bg-accent-soft" onClick={() => setSets(l.key, l.sets + 1)} aria-label="One set more">
                           <Plus size={18} />
                         </button>
-                        <span className="whitespace-nowrap text-base">
-                          set{l.sets === 1 ? "" : "s"} = <b className="tnum">{m.pieces} pcs</b>
+                        </div>
+                        <span className="whitespace-nowrap text-sm text-muted">
+                          set{l.sets === 1 ? "" : "s"} = <b className="text-foreground tnum">{m.pieces} pcs</b>
                         </span>
                       </div>
-                      <p className="text-lg font-bold tnum">{formatINR(m.gross)}</p>
+                      <p className="font-extrabold tnum">{formatINR(m.gross)}</p>
                     </div>
                   </li>
                 );
@@ -314,11 +311,11 @@ export function OrderClient({
           )}
         </section>
 
-        <section className="rounded-2xl border border-line bg-surface p-4 shadow-sm md:p-5">
-          <h2 className="flex items-center gap-2 text-lg font-bold">
-            <StepBadge n={3} small /> Customer <span className="text-base font-normal text-muted">(can be added later)</span>
+        <section className="card p-4 md:p-5">
+          <h2 className="font-bold">
+            Customer <span className="font-medium text-muted">· optional</span>
           </h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <Field id="cname" label="Customer / shop name" value={customerName} onChange={setCustomerName} />
             <Field id="cphone" label="Phone (for WhatsApp)" value={customerPhone} onChange={setCustomerPhone} inputMode="tel" />
             <Field id="cgst" label="Customer GST number" value={customerGstin} onChange={(v) => setCustomerGstin(v.toUpperCase())} />
@@ -329,15 +326,15 @@ export function OrderClient({
           </div>
         </section>
 
-        {error && <p className="rounded-xl bg-accent-soft px-4 py-3 text-base text-accent">{error}</p>}
+        {error && <p className="alert-error">{error}</p>}
 
-        <div className="fixed inset-x-0 bottom-[60px] z-10 border-t border-line bg-surface/95 px-4 py-3 backdrop-blur md:static md:rounded-2xl md:border md:shadow-sm md:px-5 md:py-4">
+        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-line bg-surface/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur md:static md:rounded-[1.1rem] md:border md:px-5 md:py-4 md:shadow-sm">
           <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-lg font-bold tnum">
-                {totals.sets} sets = {totals.pieces} pcs
+            <div className="min-w-0">
+              <p className="text-lg font-extrabold tnum">
+                {totals.sets} sets · {totals.pieces} pcs
               </p>
-              <p className="text-base text-muted tnum">{formatINR(totals.amount)} before GST</p>
+              <p className="text-sm text-muted tnum">{formatINR(totals.amount)} before GST</p>
             </div>
             <button type="button" onClick={save} disabled={saving || lines.length === 0} className="btn btn-primary btn-lg">
               {saving && <Loader2 className="animate-spin" size={18} />}

@@ -203,7 +203,7 @@ export function TagScanner({ onSaved, saveLabel }: { onSaved: (saved: SavedTag) 
               <Keyboard size={18} /> Type
             </button>
           </div>
-          {error && <p className="mt-3 rounded-xl bg-accent-soft px-3 py-2 text-base text-accent">{error}</p>}
+          {error && <p className="alert-error mt-3">{error}</p>}
         </>
       )}
 
@@ -238,13 +238,13 @@ export function TagScanner({ onSaved, saveLabel }: { onSaved: (saved: SavedTag) 
           </div>
 
           {warnings.length > 0 && (
-            <ul className="space-y-1 rounded-xl bg-warn/10 px-3 py-2 text-sm text-warn">
+            <ul className="space-y-1 rounded-xl bg-warn-soft px-3 py-2 text-sm text-warn">
               {warnings.map((w) => (
                 <li key={w}>• {w}</li>
               ))}
             </ul>
           )}
-          {notice && <p className="rounded-xl bg-warn/10 px-3 py-2 text-sm text-warn">{notice}</p>}
+          {notice && <p className="rounded-xl bg-warn-soft px-3 py-2 text-sm text-warn">{notice}</p>}
 
           <div className="grid gap-3 sm:grid-cols-2">
             <Field id={`${uid}-code`} label="Article code" value={draft.designNo} onChange={(v) => set("designNo", v)} placeholder="KW-1170" />
@@ -331,7 +331,7 @@ export function TagScanner({ onSaved, saveLabel }: { onSaved: (saved: SavedTag) 
             </div>
           )}
 
-          {error && <p className="rounded-xl bg-accent-soft px-3 py-2 text-base text-accent">{error}</p>}
+          {error && <p className="alert-error">{error}</p>}
 
           <button type="button" onClick={save} disabled={saving} className="btn btn-primary btn-lg w-full">
             {saving && <Loader2 className="animate-spin" size={18} />}

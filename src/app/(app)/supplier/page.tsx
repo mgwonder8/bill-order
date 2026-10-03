@@ -1,10 +1,11 @@
 import Link from "next/link";
+import { Phone, Truck } from "lucide-react";
 import { requireUser } from "@/lib/session";
 import { supplierDay } from "@/lib/store/data";
 import { formatINR } from "@/lib/money";
-import { formatDate, formatDateTime, istDay, shiftDay } from "@/lib/dates";
+import { formatDate, formatTime, istDay, shiftDay } from "@/lib/dates";
 import { shop } from "@/lib/shop";
-import { Card, EmptyState, PageHeader } from "@/components/ui";
+import { Card, EmptyState, PageHeader, Pill } from "@/components/ui";
 import { DocActions } from "@/components/doc-actions";
 
 export const metadata = { title: "Supplier report" };
@@ -20,103 +21,106 @@ export default async function SupplierPage({ searchParams }: PageProps<"/supplie
 
   const totalSets = suppliers.reduce((s, x) => s + x.totalSets, 0);
   const totalPieces = suppliers.reduce((s, x) => s + x.totalPieces, 0);
+  const chip = (active: boolean) =>
+    `rounded-lg px-3.5 py-2 text-sm font-bold transition-colors ${active ? "bg-accent text-white" : "text-muted hover:text-foreground"}`;
 
   return (
     <>
-      <PageHeader
-        step={3}
-        title="Daily supplier report"
-        subtitle="Everything billed on one day, grouped by supplier. Send it once a day."
-      />
+      <PageHeader step={3} title="Supplier report" subtitle="Everything billed in a day, ready to send to each supplier." />
 
-      <Card className="mb-5 p-4 md:p-5">
-        <form className="flex flex-wrap items-end gap-2" method="get">
-          <div>
-            <label className="label" htmlFor="date">
-              Date
-            </label>
-            <input id="date" name="date" type="date" defaultValue={day} max={today} className="field w-auto" />
-          </div>
-          <button type="submit" className="btn btn-dark">
-            Show
-          </button>
-          <Link href="/supplier" className={`btn ${day === today ? "btn-primary" : "btn-outline"}`}>
+      <div className="mb-5 flex flex-wrap items-center gap-2">
+        <div className="inline-flex rounded-xl border border-line bg-surface p-1">
+          <Link href="/supplier" className={chip(day === today)}>
             Today
           </Link>
-          <Link href={`/supplier?date=${yesterday}`} className={`btn ${day === yesterday ? "btn-primary" : "btn-outline"}`}>
+          <Link href={`/supplier?date=${yesterday}`} className={chip(day === yesterday)}>
             Yesterday
           </Link>
+        </div>
+        <form method="get" className="flex items-center gap-2">
+          <input aria-label="Pick a date" name="date" type="date" defaultValue={day} max={today} className="field h-11 min-h-0 w-auto py-1.5" />
+          <button type="submit" className="btn btn-outline btn-sm h-11">
+            Show
+          </button>
         </form>
-        <p className="mt-3 text-base text-muted tnum">
-          {formatDate(day)} · {billCount} bill{billCount === 1 ? "" : "s"} · {totalSets} sets = {totalPieces} pcs · compiled{" "}
-          {formatDateTime(compiledAt)}
-        </p>
-      </Card>
+      </div>
+
+      <div className="mb-5 grid grid-cols-3 gap-2 md:gap-3">
+        <Summary label="Date" value={formatDate(day)} />
+        <Summary label="Bills" value={String(billCount)} />
+        <Summary label="Sold" value={`${totalSets} sets`} hint={`${totalPieces} pcs`} />
+      </div>
 
       {suppliers.length === 0 ? (
-        <EmptyState
-          title={`Nothing billed on ${formatDate(day)}`}
-          body="When orders are confirmed into bills, the items are collected here for each supplier."
-        />
+        <EmptyState icon={Truck} title={`Nothing billed on ${formatDate(day)}`} body="When orders are confirmed into bills, items collect here for each supplier." />
       ) : (
         <>
           {suppliers.length > 1 && (
-            <Card className="mb-5 p-5">
-              <p className="text-lg font-bold">All suppliers in one PDF</p>
-              <p className="mt-1 mb-3 text-base text-muted">One page per supplier.</p>
-              <DocActions shop={shop} doc={{ kind: "supplier", day, suppliers, compiledAt }} />
+            <Card className="mb-4 flex flex-wrap items-center justify-between gap-3 p-4">
+              <div>
+                <p className="font-bold">All {suppliers.length} suppliers in one PDF</p>
+                <p className="text-sm text-muted">One page per supplier · compiled {formatTime(compiledAt)}</p>
+              </div>
+              <DocActions shop={shop} doc={{ kind: "supplier", day, suppliers, compiledAt }} compact />
             </Card>
           )}
 
-          <div className="space-y-5">
+          <div className="space-y-4">
             {suppliers.map((sup) => (
-              <Card key={sup.supplierName} className="p-4 md:p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xl font-bold">{sup.supplierName}</p>
-                    <p className="text-base text-muted">
-                      GST no: {sup.supplierGstin || <span className="text-warn">not added</span>}
-                      {sup.supplierPhone && <> · Phone {sup.supplierPhone}</>}
-                    </p>
+              <Card key={sup.supplierName} className="overflow-hidden">
+                <div className="flex flex-wrap items-start gap-3 p-4 md:p-5">
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-accent-soft text-base font-extrabold uppercase text-accent">
+                    {sup.supplierName.charAt(0)}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-lg font-extrabold leading-tight">{sup.supplierName}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
+                      {sup.supplierGstin ? <span className="tnum">GSTIN {sup.supplierGstin}</span> : <Pill tone="warn">GST no. not added</Pill>}
+                      {sup.supplierPhone && (
+                        <span className="inline-flex items-center gap-1 tnum">
+                          <Phone size={13} /> {sup.supplierPhone}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-xl font-bold tnum">
-                      {sup.totalSets} sets = {sup.totalPieces} pcs
+                    <p className="text-lg font-extrabold tnum">{sup.totalSets} sets</p>
+                    <p className="text-sm text-muted tnum">
+                      {sup.totalPieces} pcs · {formatINR(sup.totalAmount)}
                     </p>
-                    <p className="text-base text-muted tnum">{formatINR(sup.totalAmount)} at tag rate</p>
                   </div>
                 </div>
 
-                <div className="mt-4 overflow-x-auto">
-                  <table className="w-full min-w-[520px] text-base">
+                <div className="overflow-x-auto border-t border-line">
+                  <table className="w-full min-w-[480px] text-sm">
                     <thead>
-                      <tr className="border-b border-line text-left text-sm text-muted">
-                        <th className="pb-2 font-semibold">Article code</th>
-                        <th className="pb-2 font-semibold">Size set</th>
-                        <th className="pb-2 text-right font-semibold">Sets</th>
-                        <th className="pb-2 text-right font-semibold">Pieces</th>
-                        <th className="pb-2 text-right font-semibold">Rate/pc</th>
-                        <th className="pb-2 text-right font-semibold">Amount</th>
+                      <tr className="bg-background/60 text-left text-xs font-bold uppercase tracking-wide text-muted">
+                        <th className="px-4 py-2.5 md:px-5">Article</th>
+                        <th className="px-2 py-2.5">Size set</th>
+                        <th className="px-2 py-2.5 text-right">Sets</th>
+                        <th className="px-2 py-2.5 text-right">Pcs</th>
+                        <th className="px-2 py-2.5 text-right">Rate</th>
+                        <th className="px-4 py-2.5 text-right md:px-5">Amount</th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="divide-y divide-line">
                       {sup.lines.map((l) => (
-                        <tr key={`${l.articleCode}-${l.size}-${l.rate}`} className="border-b border-line/70">
-                          <td className="py-2.5 font-semibold">{l.articleCode}</td>
-                          <td className="py-2.5">{l.size}</td>
-                          <td className="py-2.5 text-right font-semibold tnum">{l.sets}</td>
-                          <td className="py-2.5 text-right tnum">{l.pieces}</td>
-                          <td className="py-2.5 text-right tnum">{formatINR(l.rate)}</td>
-                          <td className="py-2.5 text-right tnum">{formatINR(l.amount)}</td>
+                        <tr key={`${l.articleCode}-${l.size}-${l.rate}`}>
+                          <td className="px-4 py-2.5 font-bold md:px-5">{l.articleCode}</td>
+                          <td className="px-2 py-2.5">{l.size}</td>
+                          <td className="px-2 py-2.5 text-right font-bold tnum">{l.sets}</td>
+                          <td className="px-2 py-2.5 text-right tnum">{l.pieces}</td>
+                          <td className="px-2 py-2.5 text-right tnum">{formatINR(l.rate)}</td>
+                          <td className="px-4 py-2.5 text-right tnum md:px-5">{formatINR(l.amount)}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-                <p className="mt-2 text-sm text-muted">From bills: {sup.billNos.join(", ")}</p>
 
-                <div className="mt-4 border-t border-line pt-4">
-                  <DocActions shop={shop} doc={{ kind: "supplier", day, suppliers: [sup], compiledAt }} />
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line p-4 md:px-5">
+                  <p className="text-xs text-muted">Bills: {sup.billNos.join(", ")}</p>
+                  <DocActions shop={shop} doc={{ kind: "supplier", day, suppliers: [sup], compiledAt }} compact />
                 </div>
               </Card>
             ))}
@@ -124,5 +128,15 @@ export default async function SupplierPage({ searchParams }: PageProps<"/supplie
         </>
       )}
     </>
+  );
+}
+
+function Summary({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <Card className="px-3 py-2.5 md:px-4 md:py-3">
+      <p className="text-xs font-semibold text-muted">{label}</p>
+      <p className="truncate font-extrabold tnum">{value}</p>
+      {hint && <p className="text-xs text-muted tnum">{hint}</p>}
+    </Card>
   );
 }

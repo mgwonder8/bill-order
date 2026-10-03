@@ -57,7 +57,7 @@ export function DocActions({
       } else {
         const result = await sharePdf(blob, filename, message(shop, doc));
         if (result === "downloaded") {
-          setNote("This device cannot share files directly, so the PDF was downloaded. Attach it in WhatsApp or email.");
+          setNote("Sharing isn't supported here, so the PDF was downloaded instead.");
         }
       }
     } catch (err) {
@@ -74,25 +74,20 @@ export function DocActions({
   return (
     <div className="no-print">
       <div className="flex flex-wrap gap-2">
-        <button type="button" className={`btn btn-outline ${size}`} onClick={() => run("download")} disabled={busy !== null}>
-          {busy === "download" ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} />}
-          Download PDF
-        </button>
+        <a className={`btn btn-whatsapp ${size}`} href={whatsappUrl(phone, message(shop, doc))} target="_blank" rel="noopener noreferrer">
+          <MessageCircle size={18} />
+          WhatsApp
+        </a>
         <button type="button" className={`btn btn-outline ${size}`} onClick={() => run("share")} disabled={busy !== null}>
           {busy === "share" ? <Loader2 className="animate-spin" size={18} /> : <Share2 size={18} />}
           Share PDF
         </button>
-        <a
-          className={`btn btn-whatsapp ${size}`}
-          href={whatsappUrl(phone, message(shop, doc))}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <MessageCircle size={18} />
-          WhatsApp{phone ? "" : " message"}
-        </a>
+        <button type="button" className={`btn btn-outline ${size}`} onClick={() => run("download")} disabled={busy !== null}>
+          {busy === "download" ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} />}
+          Download
+        </button>
         {print && (
-          <button type="button" className={`btn btn-outline ${size}`} onClick={() => window.print()}>
+          <button type="button" className={`btn btn-outline ${size} hidden md:inline-flex`} onClick={() => window.print()}>
             <Printer size={18} />
             Print
           </button>

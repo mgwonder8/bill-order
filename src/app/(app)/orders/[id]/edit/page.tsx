@@ -15,7 +15,7 @@ export default async function EditOrderPage({ params }: PageProps<"/orders/[id]/
 
   return (
     <>
-      <PageHeader step={2} title={`Change order ${found.order.orderNo}`} subtitle="Scan more tags, change quantities, then save." />
+      <PageHeader back={{ href: `/orders/${id}`, label: `Order ${found.order.orderNo}` }} title="Change order" subtitle="Scan more tags or change quantities, then save." />
       <OrderClient catalog={catalog} initial={found} />
     </>
   );
