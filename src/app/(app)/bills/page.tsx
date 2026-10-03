@@ -5,6 +5,7 @@ import { listBills } from "@/lib/store/data";
 import { formatINR } from "@/lib/money";
 import { formatDate, formatTime, istDay, shiftDay } from "@/lib/dates";
 import type { Bill } from "@/lib/types";
+import { qtyLabel } from "@/lib/sets";
 import { Card, EmptyState, PageHeader } from "@/components/ui";
 
 export const metadata = { title: "Bills" };
@@ -16,8 +17,8 @@ export default async function BillsPage() {
   if (bills.length === 0) {
     return (
       <>
-        <PageHeader title="Bills" />
-        <EmptyState icon={FileText} title="No bills yet" body="Bills are made by confirming an order." cta={{ href: "/bills/new", label: "Make a bill" }} />
+        <PageHeader title="Customer bills" />
+        <EmptyState icon={FileText} title="No bills yet" body="Scan the tag of what a customer buys to make a GST bill from your stock." cta={{ href: "/bills/new", label: "Bill a customer" }} />
       </>
     );
   }
@@ -33,7 +34,7 @@ export default async function BillsPage() {
 
   return (
     <>
-      <PageHeader title="Bills" subtitle={`${bills.length} bill${bills.length === 1 ? "" : "s"} saved`} />
+      <PageHeader title="Customer bills" subtitle={`${bills.length} bill${bills.length === 1 ? "" : "s"} saved`} />
       <div className="space-y-6">
         {[...groups.entries()].map(([day, list]) => (
           <section key={day}>
@@ -52,7 +53,7 @@ export default async function BillsPage() {
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-bold">{b.customerName}</p>
                         <p className="truncate text-sm text-muted tnum">
-                          {b.billNo} · {formatTime(b.createdAt)} · {b.totalSets} sets
+                          {b.billNo} · {formatTime(b.createdAt)} · {qtyLabel(b.totalPieces)}
                         </p>
                       </div>
                       <p className="font-extrabold tnum">{formatINR(b.total)}</p>

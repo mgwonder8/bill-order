@@ -56,6 +56,9 @@ textarea {
 
 html {
   font-size: 16px;
+  /* No double-tap zoom: quick taps on + / - or the keypad must not zoom the page. */
+  touch-action: manipulation;
+  overscroll-behavior-y: none;
 }
 
 @layer components {
@@ -214,6 +217,15 @@ html {
   }
   body {
     background: #fff;
+  }
+  /* The app shell scrolls inside <main>; print the whole document instead. */
+  html,
+  body,
+  .app-shell,
+  .app-scroll {
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
   }
   .print-sheet {
     box-shadow: none !important;

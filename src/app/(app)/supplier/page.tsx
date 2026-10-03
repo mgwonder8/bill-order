@@ -5,6 +5,7 @@ import { supplierDay } from "@/lib/store/data";
 import { formatINR } from "@/lib/money";
 import { formatDate, formatTime, istDay, shiftDay } from "@/lib/dates";
 import { shop } from "@/lib/shop";
+import { qtyLabel } from "@/lib/sets";
 import { Card, EmptyState, PageHeader, Pill } from "@/components/ui";
 import { DocActions } from "@/components/doc-actions";
 
@@ -19,14 +20,13 @@ export default async function SupplierPage({ searchParams }: PageProps<"/supplie
   const compiledAt = new Date().toISOString();
   const { suppliers, billCount } = await supplierDay(day);
 
-  const totalSets = suppliers.reduce((s, x) => s + x.totalSets, 0);
   const totalPieces = suppliers.reduce((s, x) => s + x.totalPieces, 0);
   const chip = (active: boolean) =>
     `rounded-lg px-3.5 py-2 text-sm font-bold transition-colors ${active ? "bg-accent text-white" : "text-muted hover:text-foreground"}`;
 
   return (
     <>
-      <PageHeader step={3} title="Supplier report" subtitle="Everything billed in a day, ready to send to each supplier." />
+      <PageHeader step={3} title="Supplier report" subtitle="What you sold in a day from each supplier, at their rate. Send it to them." />
 
       <div className="mb-5 flex flex-wrap items-center gap-2">
         <div className="inline-flex rounded-xl border border-line bg-surface p-1">
@@ -48,7 +48,7 @@ export default async function SupplierPage({ searchParams }: PageProps<"/supplie
       <div className="mb-5 grid grid-cols-3 gap-2 md:gap-3">
         <Summary label="Date" value={formatDate(day)} />
         <Summary label="Bills" value={String(billCount)} />
-        <Summary label="Sold" value={`${totalSets} sets`} hint={`${totalPieces} pcs`} />
+        <Summary label="Sold" value={qtyLabel(totalPieces)} hint={`${totalPieces} pcs`} />
       </div>
 
       {suppliers.length === 0 ? (
@@ -84,7 +84,7 @@ export default async function SupplierPage({ searchParams }: PageProps<"/supplie
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-lg font-extrabold tnum">{sup.totalSets} sets</p>
+                    <p className="text-lg font-extrabold tnum">{qtyLabel(sup.totalPieces)}</p>
                     <p className="text-sm text-muted tnum">
                       {sup.totalPieces} pcs · {formatINR(sup.totalAmount)}
                     </p>
@@ -97,9 +97,9 @@ export default async function SupplierPage({ searchParams }: PageProps<"/supplie
                       <tr className="bg-background/60 text-left text-xs font-bold uppercase tracking-wide text-muted">
                         <th className="px-4 py-2.5 md:px-5">Article</th>
                         <th className="px-2 py-2.5">Size set</th>
-                        <th className="px-2 py-2.5 text-right">Sets</th>
+                        <th className="px-2 py-2.5 text-right">Qty</th>
                         <th className="px-2 py-2.5 text-right">Pcs</th>
-                        <th className="px-2 py-2.5 text-right">Rate</th>
+                        <th className="px-2 py-2.5 text-right">Their rate</th>
                         <th className="px-4 py-2.5 text-right md:px-5">Amount</th>
                       </tr>
                     </thead>
@@ -108,7 +108,7 @@ export default async function SupplierPage({ searchParams }: PageProps<"/supplie
                         <tr key={`${l.articleCode}-${l.size}-${l.rate}`}>
                           <td className="px-4 py-2.5 font-bold md:px-5">{l.articleCode}</td>
                           <td className="px-2 py-2.5">{l.size}</td>
-                          <td className="px-2 py-2.5 text-right font-bold tnum">{l.sets}</td>
+                          <td className="px-2 py-2.5 text-right font-bold whitespace-nowrap tnum">{qtyLabel(l.pieces)}</td>
                           <td className="px-2 py-2.5 text-right tnum">{l.pieces}</td>
                           <td className="px-2 py-2.5 text-right tnum">{formatINR(l.rate)}</td>
                           <td className="px-4 py-2.5 text-right tnum md:px-5">{formatINR(l.amount)}</td>

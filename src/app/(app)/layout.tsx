@@ -25,8 +25,10 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const user = await requireUser();
 
   return (
-    <div className="min-h-dvh md:grid md:grid-cols-[248px_1fr]">
-      <aside className="no-print sticky top-0 hidden h-dvh flex-col border-r border-line bg-surface py-5 md:flex">
+    // App shell: the document never scrolls, only <main> does, so the header and the
+    // bottom menu are ordinary layout rows that cannot drift on phone browsers.
+    <div className="app-shell flex h-dvh flex-col md:grid md:grid-cols-[248px_1fr]">
+      <aside className="no-print hidden h-dvh flex-col border-r border-line bg-surface py-5 md:flex">
         <Link href="/" className="mb-6 flex items-center gap-3 px-5">
           <BrandMark />
           <span className="min-w-0">
@@ -49,8 +51,8 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-col">
-        <header className="no-print sticky top-0 z-10 flex items-center justify-between border-b border-line bg-surface/90 px-4 py-2.5 backdrop-blur md:hidden">
+      <div className="app-shell flex min-h-0 min-w-0 flex-1 flex-col md:h-dvh">
+        <header className="no-print z-10 flex shrink-0 items-center justify-between border-b border-line bg-surface px-4 py-2.5 md:hidden">
           <Link href="/" className="flex min-w-0 items-center gap-2.5">
             <BrandMark size={32} />
             <span className="min-w-0">
@@ -68,7 +70,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 pt-5 pb-28 md:px-8 md:py-8">{children}</main>
+        <main className="app-scroll min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+          <div className="mx-auto w-full max-w-6xl px-4 pt-5 pb-10 md:px-8 md:py-8">{children}</div>
+        </main>
         <BottomNav />
       </div>
     </div>

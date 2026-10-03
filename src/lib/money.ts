@@ -27,8 +27,9 @@ export const SGST_RATE = 2.5;
 
 export type LineMoney = { pieces: number; gross: number; discountAmount: number; taxable: number };
 
-export function lineMoney(l: { sets: number; pcsPerSet: number; rate: number; discountPct?: number }): LineMoney {
-  const pieces = (Number(l.sets) || 0) * (Number(l.pcsPerSet) || 1);
+/** Money for one line. Quantity is always in pieces; sets are only how it is entered. */
+export function lineMoney(l: { pieces: number; rate: number; discountPct?: number }): LineMoney {
+  const pieces = Math.max(0, Math.round(Number(l.pieces) || 0));
   const gross = money(pieces * (Number(l.rate) || 0));
   const pct = Math.min(100, Math.max(0, Number(l.discountPct) || 0));
   const discountAmount = money((gross * pct) / 100);
@@ -49,9 +50,7 @@ export type BillMoney = {
   total: number;
 };
 
-export function billMoney(
-  lines: { sets: number; pcsPerSet: number; rate: number; discountPct?: number }[]
-): BillMoney {
+export function billMoney(lines: { sets: number; pieces: number; rate: number; discountPct?: number }[]): BillMoney {
   let totalSets = 0;
   let totalPieces = 0;
   let grossAmount = 0;

@@ -5,6 +5,7 @@ import { getBill } from "@/lib/store/data";
 import { formatINR } from "@/lib/money";
 import { formatDate, formatDateTime, formatTime } from "@/lib/dates";
 import { amountInWords } from "@/lib/words";
+import { lineQtyLabel, qtyLabel } from "@/lib/sets";
 import { shop } from "@/lib/shop";
 import { Card, PageHeader } from "@/components/ui";
 import { DocActions } from "@/components/doc-actions";
@@ -35,7 +36,7 @@ export default async function BillPage({ params, searchParams }: PageProps<"/bil
           <p className="text-sm font-semibold text-muted">Grand total</p>
           <p className="text-3xl font-extrabold tracking-tight tnum">{formatINR(bill.total)}</p>
           <p className="text-sm text-muted tnum">
-            {bill.totalSets} sets · {bill.totalPieces} pcs · GST {formatINR(bill.cgstAmount + bill.sgstAmount)}
+            {bill.totalPieces} pcs ({qtyLabel(bill.totalPieces)}) · GST {formatINR(bill.cgstAmount + bill.sgstAmount)}
           </p>
         </div>
         <DocActions shop={shop} doc={{ kind: "bill", bill, items }} print />
@@ -55,7 +56,6 @@ export default async function BillPage({ params, searchParams }: PageProps<"/bil
             <p className="text-sm text-muted tnum">
               {formatDate(bill.createdAt)} · {formatTime(bill.createdAt)}
             </p>
-            {bill.orderNo && <p className="text-xs text-muted tnum">Order {bill.orderNo}</p>}
           </div>
         </header>
 
@@ -81,7 +81,7 @@ export default async function BillPage({ params, searchParams }: PageProps<"/bil
                 <th className="pb-2">Article</th>
                 <th className="pb-2">HSN</th>
                 <th className="pb-2">Size set</th>
-                <th className="pb-2 text-right">Sets</th>
+                <th className="pb-2 text-right">Qty</th>
                 <th className="pb-2 text-right">Pcs</th>
                 <th className="pb-2 text-right">Rate</th>
                 <th className="pb-2 text-right">Amount</th>
@@ -98,7 +98,7 @@ export default async function BillPage({ params, searchParams }: PageProps<"/bil
                   </td>
                   <td className="py-2.5 text-muted tnum">{i.hsn}</td>
                   <td className="py-2.5">{i.size}</td>
-                  <td className="py-2.5 text-right font-bold tnum">{i.sets}</td>
+                  <td className="py-2.5 text-right font-bold whitespace-nowrap tnum">{lineQtyLabel(i.sets, i.loosePieces)}</td>
                   <td className="py-2.5 text-right tnum">{i.pieces}</td>
                   <td className="py-2.5 text-right tnum">{formatINR(i.rate)}</td>
                   <td className="py-2.5 text-right tnum">{formatINR(i.grossAmount)}</td>

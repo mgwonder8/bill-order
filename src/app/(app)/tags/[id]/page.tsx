@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/session";
 import { getTag } from "@/lib/store/data";
 import { formatINR } from "@/lib/money";
 import { formatDateTime } from "@/lib/dates";
+import { qtyLabel } from "@/lib/sets";
 import { Card, PageHeader } from "@/components/ui";
 
 export const metadata = { title: "Saved tag" };
@@ -35,7 +36,7 @@ export default async function TagPage({ params, searchParams }: PageProps<"/tags
         subtitle={tag.supplierName}
         action={
           <Link href={`/orders/new?tag=${tag.id}`} className="btn btn-primary">
-            <ClipboardList size={18} /> Make an order
+            <ClipboardList size={18} /> Order from supplier
           </Link>
         }
       />
@@ -58,15 +59,18 @@ export default async function TagPage({ params, searchParams }: PageProps<"/tags
         )}
         <div className="space-y-5">
           <Card className="overflow-hidden">
-            <p className="border-b border-line px-5 py-3 font-bold">Sizes and rates</p>
+            <p className="border-b border-line px-5 py-3 font-bold">Sizes, rates and stock</p>
             <ul className="divide-y divide-line">
               {sizes.map((z) => (
                 <li key={z.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3">
                   <span>
                     <b>{z.size}</b> <span className="text-sm text-muted">({z.sizes.replaceAll("/", ", ")})</span>
+                    <span className={`ml-2 text-xs font-bold ${z.inStock > 0 ? "text-ok" : "text-danger"}`}>{z.inStock > 0 ? `${qtyLabel(z.inStock)} in stock` : "Out of stock"}</span>
                   </span>
                   <span className="text-sm text-muted tnum">
-                    <b className="text-base text-foreground">{formatINR(z.rate)}</b>/pc · set of {z.pcsPerSet} = {formatINR(z.rate * z.pcsPerSet)}
+                    Supplier <b className="text-foreground">{formatINR(z.rate)}</b>/pc · Sell{" "}
+                    <b className={z.sellRate > 0 ? "text-foreground" : "text-warn"}>{z.sellRate > 0 ? formatINR(z.sellRate) : "not set"}</b>
+                    {z.sellRate > 0 && "/pc"}
                   </span>
                 </li>
               ))}

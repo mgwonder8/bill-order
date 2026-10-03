@@ -2,57 +2,67 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Loader2, Minus, Plus, Search, ShoppingBag, Trash2, XCircle } from "lucide-react";
+import { CheckCircle2, Loader2, PackagePlus, Phone, Plus, Search, Trash2, XCircle } from "lucide-react";
 import { formatINR, lineMoney } from "@/lib/money";
+import { SET_PCS } from "@/lib/sets";
 import type { ArticleSize, Order, OrderItem } from "@/lib/types";
 import { TagScanner, type SavedTag } from "@/components/tag-scanner";
+import { Money, Stepper } from "@/components/inputs";
 
 type Line = {
   key: string;
   sizeId: string;
   articleCode: string;
   brand: string;
-  fabric: string;
   supplierName: string;
-  supplierGstin: string;
   supplierPhone: string;
+  supplierGstin: string;
   size: string;
   sizes: string;
-  pcsPerSet: number;
-  rate: number;
   sets: number;
+  rate: string;
+  sellRate: string;
 };
 
 type Toast = { tone: "ok" | "bad"; text: string } | null;
 
 let seq = 0;
 const key = () => `l${seq++}`;
+const norm = (v: string) => v.trim().toUpperCase().replace(/\s+/g, " ");
+const price = (v: number) => (v > 0 ? String(v) : "");
 
-function fromCatalog(z: ArticleSize, sets: number): Line {
+function fromCatalog(z: ArticleSize): Line {
   return {
     key: key(),
     sizeId: z.id,
     articleCode: z.articleCode,
     brand: z.brand,
-    fabric: z.fabric,
     supplierName: z.supplierName,
-    supplierGstin: z.supplierGstin,
     supplierPhone: z.supplierPhone,
+    supplierGstin: z.supplierGstin,
     size: z.size,
     sizes: z.sizes,
-    pcsPerSet: z.pcsPerSet,
-    rate: z.rate,
-    sets,
+    sets: 1,
+    rate: price(z.rate),
+    sellRate: price(z.sellRate),
   };
 }
 
 function fromSaved(i: OrderItem): Line {
-  return { ...i, key: key() };
-}
-
-function sameLine(a: Line, b: Line) {
-  if (a.sizeId || b.sizeId) return a.sizeId === b.sizeId;
-  return a.articleCode.toLowerCase() === b.articleCode.toLowerCase() && a.size === b.size && a.rate === b.rate;
+  return {
+    key: key(),
+    sizeId: i.sizeId,
+    articleCode: i.articleCode,
+    brand: i.brand,
+    supplierName: i.supplierName,
+    supplierPhone: i.supplierPhone,
+    supplierGstin: i.supplierGstin,
+    size: i.size,
+    sizes: i.sizes,
+    sets: i.sets,
+    rate: price(i.rate),
+    sellRate: price(i.sellRate),
+  };
 }
 
 function mergeCatalog(list: ArticleSize[], fresh: ArticleSize[]): ArticleSize[] {
@@ -60,6 +70,7 @@ function mergeCatalog(list: ArticleSize[], fresh: ArticleSize[]): ArticleSize[] 
   return [...fresh, ...list.filter((z) => !ids.has(z.id))];
 }
 
+/** Builds a supplier order: scanned articles, sets of 24, supplier rate and the shop's selling price. */
 export function OrderClient({
   catalog: savedCatalog,
   initial,
@@ -71,13 +82,7 @@ export function OrderClient({
 }) {
   const router = useRouter();
   const [catalog, setCatalog] = useState<ArticleSize[]>(savedCatalog);
-  const [lines, setLines] = useState<Line[]>(
-    () => initial?.items.map(fromSaved) ?? preset.map((z) => fromCatalog(z, 1))
-  );
-  const [customerName, setCustomerName] = useState(initial?.order.customerName ?? "");
-  const [customerPhone, setCustomerPhone] = useState(initial?.order.customerPhone ?? "");
-  const [customerGstin, setCustomerGstin] = useState(initial?.order.customerGstin ?? "");
-  const [customerAddress, setCustomerAddress] = useState(initial?.order.customerAddress ?? "");
+  const [lines, setLines] = useState<Line[]>(() => initial?.items.map(fromSaved) ?? preset.map(fromCatalog));
   const [notes, setNotes] = useState(initial?.order.notes ?? "");
   const [query, setQuery] = useState("");
   const [toast, setToast] = useState<Toast>(null);
@@ -85,12 +90,14 @@ export function OrderClient({
   const [saving, setSaving] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
+  const supplier = lines[0] ? { name: lines[0].supplierName, phone: lines[0].supplierPhone, gstin: lines[0].supplierGstin } : null;
+  const orderSupplier = lines[0]?.supplierName ?? "";
+
   const show = useCallback((t: Toast) => {
     clearTimeout(toastTimer.current);
     setToast(t);
-    toastTimer.current = setTimeout(() => setToast(null), 3500);
+    toastTimer.current = setTimeout(() => setToast(null), 4000);
   }, []);
-
   useEffect(() => () => clearTimeout(toastTimer.current), []);
 
   const linesRef = useRef(lines);
@@ -98,85 +105,70 @@ export function OrderClient({
     linesRef.current = lines;
   }, [lines]);
 
-  const add = useCallback(
-    (line: Line) => {
-      const existing = linesRef.current.find((l) => sameLine(l, line));
-      if (existing) {
-        const sets = existing.sets + line.sets;
-        show({ tone: "ok", text: `${line.articleCode} (${line.size}) – now ${sets} sets` });
-        setLines((ls) => ls.map((l) => (l.key === existing.key ? { ...l, sets: l.sets + line.sets } : l)));
+  /** Adds article sizes to the order; refuses ones from another supplier than the order's. */
+  const addSizes = useCallback(
+    (sizes: ArticleSize[]) => {
+      const current = linesRef.current;
+      const orderSupplier = current[0]?.supplierName;
+      const other = orderSupplier ? sizes.find((z) => norm(z.supplierName) !== norm(orderSupplier)) : undefined;
+      if (other) {
+        show({ tone: "bad", text: `${other.articleCode} is from ${other.supplierName}. This order is for ${orderSupplier}. Save this order first, then start a new one.` });
         return;
       }
-      show({ tone: "ok", text: `Added ${line.articleCode} (${line.size}) – ${line.sets} set${line.sets === 1 ? "" : "s"}` });
-      setLines((ls) => [line, ...ls]);
+      const fresh = sizes.filter((z) => !current.some((l) => l.sizeId === z.id));
+      const repeat = sizes.filter((z) => current.some((l) => l.sizeId === z.id));
+      setLines((ls) => [...fresh.map(fromCatalog), ...ls.map((l) => (repeat.some((z) => z.id === l.sizeId) ? { ...l, sets: l.sets + 1 } : l))]);
+      const first = sizes[0];
+      if (first) show({ tone: "ok", text: `Added ${first.articleCode}: ${sizes.map((z) => z.size).join(", ")} at 1 set (${SET_PCS} pcs) each` });
     },
     [show]
   );
 
   function onTagSaved(saved: SavedTag) {
     setCatalog((c) => mergeCatalog(c, saved.sizes));
-    for (const z of saved.sizes) add(fromCatalog(z, 1));
-    show({
-      tone: "ok",
-      text: `Saved ${saved.sizes[0]?.articleCode ?? "tag"} and added ${saved.sizes.length} size set${saved.sizes.length === 1 ? "" : "s"} at 1 set each`,
-    });
+    addSizes(saved.sizes);
   }
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = q
-      ? catalog.filter((z) => `${z.articleCode} ${z.brand} ${z.supplierName} ${z.size}`.toLowerCase().includes(q))
-      : catalog;
+    const pool = orderSupplier ? catalog.filter((z) => norm(z.supplierName) === norm(orderSupplier)) : catalog;
+    const list = q ? pool.filter((z) => `${z.articleCode} ${z.brand} ${z.supplierName} ${z.size}`.toLowerCase().includes(q)) : pool;
     return list.slice(0, 8);
-  }, [catalog, query]);
+  }, [catalog, query, orderSupplier]);
+
+  function patch(k: string, p: Partial<Line>) {
+    setLines((ls) => ls.map((l) => (l.key === k ? { ...l, ...p } : l)));
+  }
 
   function setSets(k: string, sets: number) {
-    setLines((ls) => ls.map((l) => (l.key === k ? { ...l, sets: Math.max(1, Math.min(9999, Math.round(sets) || 1)) } : l)));
+    patch(k, { sets: Math.max(1, Math.min(9999, Math.round(sets) || 1)) });
   }
 
   const totals = lines.reduce(
     (t, l) => {
-      const m = lineMoney(l);
-      return { sets: t.sets + l.sets, pieces: t.pieces + m.pieces, amount: t.amount + m.gross };
+      const pieces = l.sets * SET_PCS;
+      return { sets: t.sets + l.sets, pieces: t.pieces + pieces, amount: t.amount + lineMoney({ pieces, rate: Number(l.rate) || 0 }).gross };
     },
     { sets: 0, pieces: 0, amount: 0 }
   );
+  const missingSell = lines.filter((l) => !(Number(l.sellRate) > 0)).length;
 
   async function save() {
     setError(null);
-    if (lines.length === 0) return setError("Scan a tag or pick an article to add an item.");
+    if (lines.length === 0) return setError("Scan a tag to add an item.");
     setSaving(true);
     try {
       const res = await fetch(initial ? `/api/orders/${initial.order.id}` : "/api/orders", {
         method: initial ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          customerName,
-          customerPhone,
-          customerGstin,
-          customerAddress,
           notes,
-          lines: [...lines].reverse().map((l) => ({
-            sizeId: l.sizeId,
-            articleCode: l.articleCode,
-            brand: l.brand,
-            fabric: l.fabric,
-            supplierName: l.supplierName,
-            supplierGstin: l.supplierGstin,
-            supplierPhone: l.supplierPhone,
-            size: l.size,
-            pcsPerSet: l.pcsPerSet,
-            sets: l.sets,
-            rate: l.rate,
-          })),
+          lines: [...lines].reverse().map((l) => ({ sizeId: l.sizeId, sets: l.sets, rate: Number(l.rate) || 0, sellRate: Number(l.sellRate) || 0 })),
         }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "Could not save this order.");
-        return;
-      }
-      router.push(`/orders/${data.orderId}`);
+      if (!res.ok) return setError(data.error ?? "Could not save this order.");
+      router.push(`/orders/${data.orderId}${initial ? "" : "?new=1"}`);
       router.refresh();
     } catch {
       setError("Could not reach the server while saving.");
@@ -191,12 +183,8 @@ export function OrderClient({
         <section className="card p-4">
           <TagScanner onSaved={onTagSaved} saveLabel="Save & add to order" />
           {toast && (
-            <p
-              className={`rise mt-3 flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold ${
-                toast.tone === "ok" ? "bg-ok-soft text-ok" : "bg-danger-soft text-danger"
-              }`}
-            >
-              {toast.tone === "ok" ? <CheckCircle2 size={20} /> : <XCircle size={20} />}
+            <p className={`rise mt-3 flex items-start gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold ${toast.tone === "ok" ? "bg-ok-soft text-ok" : "bg-danger-soft text-danger"}`}>
+              {toast.tone === "ok" ? <CheckCircle2 size={18} className="mt-px shrink-0" /> : <XCircle size={18} className="mt-px shrink-0" />}
               {toast.text}
             </p>
           )}
@@ -205,34 +193,25 @@ export function OrderClient({
         <section className="card p-4">
           <h2 className="font-bold">Already saved? Pick it</h2>
           <div className="relative mt-2">
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={18} />
-            <input
-              className="field pl-10"
-              placeholder="Type article code, brand or supplier"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
+            <Search className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted" size={18} />
+            <input className="field pl-10" placeholder="Article code or brand" value={query} onChange={(e) => setQuery(e.target.value)} />
           </div>
-          {catalog.length === 0 ? (
-            <p className="mt-3 text-sm text-muted">Scanned articles show up here to reuse.</p>
+          {results.length === 0 ? (
+            <p className="mt-3 text-sm text-muted">{catalog.length === 0 ? "Scanned articles show up here to reuse." : "No match."}</p>
           ) : (
             <ul className="mt-2 divide-y divide-line">
               {results.map((z) => (
                 <li key={z.id}>
-                  <button
-                    type="button"
-                    onClick={() => add(fromCatalog(z, 1))}
-                    className="flex w-full items-center gap-3 py-2.5 text-left hover:text-accent"
-                  >
+                  <button type="button" onClick={() => addSizes([z])} className="flex w-full items-center gap-3 py-2.5 text-left">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold">
-                        {z.articleCode} · Size {z.size}
+                      <p className="truncate font-bold">
+                        {z.articleCode} <span className="text-accent">· {z.size}</span>
                       </p>
                       <p className="truncate text-sm text-muted">
                         {formatINR(z.rate)}/pc · {z.supplierName}
                       </p>
                     </div>
-                    <span className="btn btn-outline btn-sm">
+                    <span className="btn btn-soft btn-sm">
                       <Plus size={16} /> Add
                     </span>
                   </button>
@@ -245,20 +224,40 @@ export function OrderClient({
 
       <div className="space-y-5 pb-28 md:pb-0">
         <section className="card p-4 md:p-5">
+          <p className="text-xs font-bold uppercase tracking-wider text-muted">Order goes to</p>
+          {supplier ? (
+            <>
+              <p className="mt-1 text-lg font-extrabold">{supplier.name}</p>
+              <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
+                {supplier.phone && (
+                  <span className="inline-flex items-center gap-1 tnum">
+                    <Phone size={13} /> {supplier.phone}
+                  </span>
+                )}
+                <span>{supplier.gstin ? `GSTIN ${supplier.gstin}` : "GST no. not on tag"}</span>
+              </p>
+            </>
+          ) : (
+            <p className="mt-1 text-sm text-muted">The supplier is filled in from the first tag you scan.</p>
+          )}
+        </section>
+
+        <section className="card p-4 md:p-5">
           <h2 className="font-bold">
-            Items in this order
-            {lines.length > 0 && <span className="ml-1.5 font-semibold text-muted">{lines.length}</span>}
+            Items{lines.length > 0 && <span className="ml-1.5 font-semibold text-muted">{lines.length}</span>}
           </h2>
 
           {lines.length === 0 ? (
             <div className="py-10 text-center">
-              <ShoppingBag className="mx-auto text-line" size={40} strokeWidth={1.5} />
-              <p className="mt-2 text-sm text-muted">Scan a tag and its sizes appear here.</p>
+              <PackagePlus className="mx-auto text-line" size={40} strokeWidth={1.5} />
+              <p className="mt-2 text-sm text-muted">Scan a tag and its size ranges appear here.</p>
             </div>
           ) : (
             <ul className="mt-3 space-y-3">
               {lines.map((l) => {
-                const m = lineMoney(l);
+                const pieces = l.sets * SET_PCS;
+                const m = lineMoney({ pieces, rate: Number(l.rate) || 0 });
+                const noSell = !(Number(l.sellRate) > 0);
                 return (
                   <li key={l.key} className="rise rounded-xl border border-line p-3">
                     <div className="flex items-start gap-3">
@@ -266,43 +265,31 @@ export function OrderClient({
                         <p className="font-extrabold">
                           {l.articleCode} <span className="font-bold text-accent">· {l.size}</span>
                         </p>
-                        <p className="truncate text-sm text-muted">
-                          {formatINR(l.rate)}/pc · 1 set = {l.pcsPerSet} pcs{l.supplierName && ` · ${l.supplierName}`}
-                        </p>
+                        {l.brand && <p className="truncate text-sm text-muted">{l.brand}</p>}
                       </div>
                       <button
                         type="button"
                         onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}
                         className="grid h-9 w-9 place-items-center rounded-lg text-muted hover:bg-danger-soft hover:text-danger"
-                        aria-label={`Remove ${l.articleCode} size ${l.size}`}
+                        aria-label={`Remove ${l.articleCode} ${l.size}`}
                       >
                         <Trash2 size={17} />
                       </button>
                     </div>
+
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center rounded-xl border border-line">
-                        <button type="button" className="grid h-11 w-11 place-items-center rounded-l-xl text-foreground active:bg-black/[0.05]" onClick={() => setSets(l.key, l.sets - 1)} aria-label="One set less">
-                          <Minus size={18} />
-                        </button>
-                        <input
-                          className="h-11 w-14 border-x border-line bg-transparent text-center text-lg font-extrabold outline-none tnum"
-                          type="number"
-                          inputMode="numeric"
-                          min="1"
-                          value={l.sets}
-                          onChange={(e) => setSets(l.key, Number(e.target.value))}
-                          aria-label="Number of sets"
-                        />
-                        <button type="button" className="grid h-11 w-11 place-items-center rounded-r-xl text-accent active:bg-accent-soft" onClick={() => setSets(l.key, l.sets + 1)} aria-label="One set more">
-                          <Plus size={18} />
-                        </button>
-                        </div>
-                        <span className="whitespace-nowrap text-sm text-muted">
-                          set{l.sets === 1 ? "" : "s"} = <b className="text-foreground tnum">{m.pieces} pcs</b>
+                        <Stepper value={l.sets} onChange={(v) => setSets(l.key, v)} label="sets" min={1} />
+                        <span className="text-sm text-muted">
+                          set{l.sets === 1 ? "" : "s"} = <b className="text-foreground tnum">{pieces} pcs</b>
                         </span>
                       </div>
                       <p className="font-extrabold tnum">{formatINR(m.gross)}</p>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <Money label="Supplier rate / pc" value={l.rate} onChange={(v) => patch(l.key, { rate: v })} />
+                      <Money label="Your selling price / pc" value={l.sellRate} onChange={(v) => patch(l.key, { sellRate: v })} highlight={noSell} />
                     </div>
                   </li>
                 );
@@ -312,29 +299,26 @@ export function OrderClient({
         </section>
 
         <section className="card p-4 md:p-5">
-          <h2 className="font-bold">
-            Customer <span className="font-medium text-muted">· optional</span>
-          </h2>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <Field id="cname" label="Customer / shop name" value={customerName} onChange={setCustomerName} />
-            <Field id="cphone" label="Phone (for WhatsApp)" value={customerPhone} onChange={setCustomerPhone} inputMode="tel" />
-            <Field id="cgst" label="Customer GST number" value={customerGstin} onChange={(v) => setCustomerGstin(v.toUpperCase())} />
-            <Field id="caddr" label="Address" value={customerAddress} onChange={setCustomerAddress} />
-            <div className="sm:col-span-2">
-              <Field id="notes" label="Notes" value={notes} onChange={setNotes} />
-            </div>
-          </div>
+          <label className="label" htmlFor="notes">
+            Note for the supplier <span className="font-normal">(optional)</span>
+          </label>
+          <input id="notes" className="field" placeholder="e.g. Deliver by Friday" value={notes} onChange={(e) => setNotes(e.target.value)} />
         </section>
 
+        {missingSell > 0 && (
+          <p className="rounded-xl bg-warn-soft px-3 py-2.5 text-sm font-medium text-warn">
+            {missingSell} item{missingSell === 1 ? " has" : "s have"} no selling price yet. You can add it now, later in Stock, or type it on the bill.
+          </p>
+        )}
         {error && <p className="alert-error">{error}</p>}
 
-        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-line bg-surface/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur md:static md:rounded-[1.1rem] md:border md:px-5 md:py-4 md:shadow-sm">
+        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-line bg-surface px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:static md:rounded-[1.1rem] md:border md:px-5 md:py-4 md:shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="text-lg font-extrabold tnum">
                 {totals.sets} sets · {totals.pieces} pcs
               </p>
-              <p className="text-sm text-muted tnum">{formatINR(totals.amount)} before GST</p>
+              <p className="text-sm text-muted tnum">{formatINR(totals.amount)} at supplier rate</p>
             </div>
             <button type="button" onClick={save} disabled={saving || lines.length === 0} className="btn btn-primary btn-lg">
               {saving && <Loader2 className="animate-spin" size={18} />}
@@ -343,29 +327,6 @@ export function OrderClient({
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function Field({
-  id,
-  label,
-  value,
-  onChange,
-  inputMode,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  inputMode?: "tel" | "text";
-}) {
-  return (
-    <div>
-      <label className="label" htmlFor={id}>
-        {label}
-      </label>
-      <input id={id} className="field" value={value} inputMode={inputMode} onChange={(e) => onChange(e.target.value)} />
     </div>
   );
 }

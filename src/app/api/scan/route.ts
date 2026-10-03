@@ -31,14 +31,18 @@ export async function POST(req: Request) {
   const buffer = Buffer.from(await file.arrayBuffer());
   const image = { name: file.name || "tag.jpg", type: file.type || "image/jpeg", buffer };
 
-  // The photo is worth keeping even when the reading fails, so store it first.
-  let stored;
-  try {
-    stored = await saveTagImage(image);
-  } catch (err) {
-    console.error("[scan] storing the photo failed", err);
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: `Could not store the photo: ${message}` }, { status: 500 });
+  // The photo is worth keeping even when the reading fails, so store it first. Scans at
+  // the billing counter only need the reading to find the article, so they skip storage.
+  const keepPhoto = form.get("store") !== "0";
+  let stored = { url: "", driveFileId: "", driveWebLink: "" };
+  if (keepPhoto) {
+    try {
+      stored = await saveTagImage(image);
+    } catch (err) {
+      console.error("[scan] storing the photo failed", err);
+      const message = err instanceof Error ? err.message : String(err);
+      return NextResponse.json({ error: `Could not store the photo: ${message}` }, { status: 500 });
+    }
   }
 
   if (!aiConfigured()) {

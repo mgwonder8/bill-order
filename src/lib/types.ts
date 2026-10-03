@@ -18,11 +18,33 @@ export type TagExtract = {
   warnings: string[];
 };
 
+/** Who the shop buys from. Built from the tags it scans. */
+export type Supplier = {
+  id: string;
+  createdAt: string;
+  name: string;
+  gstin: string;
+  phone: string;
+  email: string;
+  address: string;
+};
+
+/** Who the shop sells to. Built from the bills it makes. */
+export type Customer = {
+  id: string;
+  createdAt: string;
+  name: string;
+  phone: string;
+  gstin: string;
+  address: string;
+};
+
 /** One supplier tag = one article (design). */
 export type Tag = {
   id: string;
   createdAt: string;
   createdBy: string;
+  supplierId: string;
   supplierName: string;
   supplierAddress: string;
   supplierPhone: string;
@@ -39,7 +61,10 @@ export type Tag = {
   driveWebLink: string;
 };
 
-/** One size set of an article with its rate, e.g. KW-1170 sizes 22-28 at Rs 260 a piece. */
+/**
+ * One size range of an article, e.g. KW-1170 sizes 22-28. `rate` is what the supplier
+ * charges per piece (from the tag); `sellRate` is the shop's selling price per piece.
+ */
 export type ArticleSize = {
   id: string;
   tagId: string;
@@ -54,9 +79,13 @@ export type ArticleSize = {
   sizes: string;
   pcsPerSet: number;
   rate: number;
+  sellRate: number;
 };
 
-/** Fields every order and bill line carries, copied at the time of sale so later edits to the article do not rewrite history. */
+/** An article size with its live stock: pieces ordered from the supplier minus pieces billed. */
+export type StockItem = ArticleSize & { orderedPieces: number; soldPieces: number; inStock: number };
+
+/** Article fields every order and bill line carries, copied at the time so later edits do not rewrite history. */
 export type LineBase = {
   articleCode: string;
   brand: string;
@@ -72,39 +101,39 @@ export type LineBase = {
   rate: number;
 };
 
-export type OrderStatus = "open" | "billed";
-
+/** A supplier order (purchase order). Saving it adds its pieces to stock. */
 export type Order = {
   id: string;
   orderNo: string;
   createdAt: string;
   createdBy: string;
-  customerName: string;
-  customerPhone: string;
-  customerGstin: string;
-  customerAddress: string;
-  status: OrderStatus;
-  billId: string;
+  supplierId: string;
+  supplierName: string;
+  supplierPhone: string;
+  supplierGstin: string;
+  supplierAddress: string;
   totalSets: number;
   totalPieces: number;
   totalAmount: number;
   notes: string;
 };
 
+/** `rate` is the supplier's rate per piece; `sellRate` the selling price set while ordering. */
 export type OrderItem = LineBase & {
   id: string;
   orderId: string;
   sizeId: string;
   amount: number;
+  sellRate: number;
 };
 
+/** A customer bill (GST tax invoice), made from stock. */
 export type Bill = {
   id: string;
   billNo: string;
-  orderId: string;
-  orderNo: string;
   createdAt: string;
   createdBy: string;
+  customerId: string;
   customerName: string;
   customerPhone: string;
   customerGstin: string;
@@ -123,9 +152,16 @@ export type Bill = {
   notes: string;
 };
 
+/**
+ * `sets` full sets plus `loosePieces`; `pieces` is the total. `rate` is the selling price
+ * per piece, `costRate` the supplier's rate (kept for the daily supplier report).
+ */
 export type BillItem = LineBase & {
   id: string;
   billId: string;
+  sizeId: string;
+  loosePieces: number;
+  costRate: number;
   hsn: string;
   grossAmount: number;
   discountPct: number;

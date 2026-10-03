@@ -25,7 +25,6 @@ const Body = z.object({
     .array(
       z.object({
         sizes: z.string().trim().min(1, "Every row needs sizes"),
-        pcsPerSet: z.coerce.number().int().min(1).max(50).optional(),
         rate: z.coerce.number().min(0),
       })
     )
@@ -46,12 +45,7 @@ export async function POST(req: Request) {
     tag: { ...tag, createdBy: user },
     sets: sets.map((row) => {
       const set = toSizeSet(row.sizes);
-      return {
-        size: set.label,
-        sizes: set.sizes.join("/"),
-        pcsPerSet: row.pcsPerSet ?? set.pcsPerSet,
-        rate: row.rate,
-      };
+      return { size: set.label, sizes: set.sizes.join("/"), rate: row.rate };
     }),
   });
   return NextResponse.json(saved);

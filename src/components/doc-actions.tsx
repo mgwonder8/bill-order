@@ -26,7 +26,7 @@ function message(shop: ShopInfo, doc: Doc): string {
 }
 
 function phoneOf(doc: Doc): string {
-  if (doc.kind === "order") return doc.order.customerPhone;
+  if (doc.kind === "order") return doc.order.supplierPhone;
   if (doc.kind === "bill") return doc.bill.customerPhone;
   return doc.suppliers.length === 1 ? doc.suppliers[0].supplierPhone : "";
 }

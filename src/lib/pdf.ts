@@ -5,6 +5,7 @@ import type { CellHookData, UserOptions } from "jspdf-autotable";
 import { formatRs } from "@/lib/money";
 import { formatDate, formatDateTime, formatTime } from "@/lib/dates";
 import { amountInWords } from "@/lib/words";
+import { lineQtyLabel, qtyLabel } from "@/lib/sets";
 import type { Bill, BillItem, Order, OrderItem, ShopInfo } from "@/lib/types";
 import type { SupplierDay } from "@/lib/store/data";
 
@@ -184,47 +185,41 @@ function noteLines(doc: JsPDF, lines: string[], y: number, width: number): numbe
   return y + all.length * lh(doc);
 }
 
-// ---------- Order form ----------
+// ---------- Purchase order (to the supplier) ----------
 
 export async function orderPdf(shop: ShopInfo, order: Order, items: OrderItem[]) {
   const { doc, autoTable } = await newDoc();
-  let y = header(doc, shop, "ORDER FORM", [
-    ["Order no", order.orderNo],
+  let y = header(doc, shop, "PURCHASE ORDER", [
+    ["PO no", order.orderNo],
     ["Date", formatDate(order.createdAt)],
     ["Time", formatTime(order.createdAt)],
   ]);
-  y = partyBox(
+  const half = (CW - 6) / 2;
+  const left = partyBox(
     doc,
-    "Customer",
-    order.customerName || "Walk-in customer",
-    [[order.customerPhone, order.customerGstin && `GSTIN: ${order.customerGstin}`].filter(Boolean).join("   |   "), order.customerAddress],
+    "To supplier",
+    order.supplierName,
+    [order.supplierGstin ? `GSTIN: ${order.supplierGstin}` : "GSTIN: not added", order.supplierPhone ? `Phone: ${order.supplierPhone}` : "", order.supplierAddress],
     M,
     y,
-    CW
+    half
   );
+  const right = partyBox(doc, "From", shop.name, [shop.gstin ? `GSTIN: ${shop.gstin}` : "", shop.phone, shop.address], M + half + 6, y, half);
+  y = Math.max(left, right);
 
   autoTable(doc, {
     ...tableOptions([8, 44, 38, 26, 13, 15, 17, 21], [4, 5, 6, 7]),
     startY: y + 5,
     head: [["#", "Article code", "Brand / Fabric", "Size set", "Sets", "Pieces", "Rate (Rs.)", "Amount (Rs.)"]],
-    body: items.map((i, n) => [
-      n + 1,
-      i.articleCode,
-      [i.brand, i.fabric].filter(Boolean).join(" / ") || "-",
-      sizeCell(i.size, i.sizes),
-      i.sets,
-      `${i.pieces}\n(${i.sets} x ${i.pcsPerSet})`,
-      amt(i.rate),
-      amt(i.amount),
-    ]),
+    body: items.map((i, n) => [n + 1, i.articleCode, [i.brand, i.fabric].filter(Boolean).join(" / ") || "-", sizeCell(i.size, i.sizes), i.sets, i.pieces, amt(i.rate), amt(i.amount)]),
     foot: [["", "Total", "", "", order.totalSets, order.totalPieces, "", amt(order.totalAmount)]],
   });
 
   y = lastY(doc) + 6;
-  noteLines(doc, ["1 set = one piece of each size in the set (22-28 or 30-36 = 4 pieces). Amounts are before GST; CGST 2.5% + SGST 2.5% is added on the bill.", order.notes ? `Notes: ${order.notes}` : ""], y, CW);
+  noteLines(doc, ["1 set = 24 pieces. Rates are as on your tag, per piece, before GST.", order.notes ? `Note: ${order.notes}` : ""], y, CW);
 
-  footer(doc, `Order form ${order.orderNo}  |  ${formatDateTime(order.createdAt)}  |  ${shop.name}`);
-  return { blob: doc.output("blob"), filename: `Order_${slug(order.orderNo)}${order.customerName ? `_${slug(order.customerName)}` : ""}.pdf` };
+  footer(doc, `Purchase order ${order.orderNo}  |  ${formatDateTime(order.createdAt)}  |  ${shop.name}`);
+  return { blob: doc.output("blob"), filename: `PO_${slug(order.orderNo)}_${slug(order.supplierName)}.pdf` };
 }
 
 // ---------- Bill ----------
@@ -235,7 +230,6 @@ export async function billPdf(shop: ShopInfo, bill: Bill, items: BillItem[]) {
     ["Bill no", bill.billNo],
     ["Date", formatDate(bill.createdAt)],
     ["Time", formatTime(bill.createdAt)],
-    ...(bill.orderNo ? ([["Order no", bill.orderNo]] as [string, string][]) : []),
     ["Place of supply", shop.state],
   ]);
   y = partyBox(
@@ -249,22 +243,22 @@ export async function billPdf(shop: ShopInfo, bill: Bill, items: BillItem[]) {
   );
 
   autoTable(doc, {
-    ...tableOptions([7, 35, 17, 22, 10, 10, 17, 21, 21, 22], [4, 5, 6, 7, 8, 9]),
+    ...tableOptions([7, 33, 17, 22, 16, 10, 15, 20, 20, 22], [4, 5, 6, 7, 8, 9]),
     startY: y + 5,
-    head: [["#", "Article", "HSN", "Size set", "Sets", "Pcs", "Rate", "Amount", "Discount", "Taxable"]],
+    head: [["#", "Article", "HSN", "Size set", "Qty", "Pcs", "Rate", "Amount", "Discount", "Taxable"]],
     body: items.map((i, n) => [
       n + 1,
       i.brand ? `${i.articleCode}\n${i.brand}` : i.articleCode,
       i.hsn || "-",
       sizeCell(i.size, i.sizes),
-      i.sets,
+      lineQtyLabel(i.sets, i.loosePieces).replace(" + ", "\n+ "),
       i.pieces,
       amt(i.rate),
       amt(i.grossAmount),
       i.discountPct ? `${i.discountPct}%\n-${amt(i.discountAmount)}` : "-",
       amt(i.taxableAmount),
     ]),
-    foot: [["", "Total", "", "", bill.totalSets, bill.totalPieces, "", amt(bill.grossAmount), bill.discountAmount ? `-${amt(bill.discountAmount)}` : "-", amt(bill.taxableAmount)]],
+    foot: [["", "Total", "", "", "", bill.totalPieces, "", amt(bill.grossAmount), bill.discountAmount ? `-${amt(bill.discountAmount)}` : "-", amt(bill.taxableAmount)]],
   });
 
   // Summary: words/notes on the left, totals on the right, signature below. Measured first, drawn as one block.
@@ -276,7 +270,7 @@ export async function billPdf(shop: ShopInfo, bill: Bill, items: BillItem[]) {
   const words = wrap(doc, amountInWords(bill.total), leftW - 8);
   const wordsH = 7 + words.length * lh(doc) + 2.5;
   font(doc, "normal", 8.2, MUTED);
-  const extra = [`Total: ${bill.totalSets} sets = ${bill.totalPieces} pieces`, bill.notes ? `Note: ${bill.notes}` : "", shop.bank ? `Bank: ${shop.bank}` : ""]
+  const extra = [`Total: ${bill.totalPieces} pieces (${qtyLabel(bill.totalPieces)})`, bill.notes ? `Note: ${bill.notes}` : "", shop.bank ? `Bank: ${shop.bank}` : ""]
     .filter(Boolean)
     .flatMap((l) => wrap(doc, l, leftW));
   const leftH = wordsH + 3 + extra.length * lh(doc);
@@ -336,7 +330,7 @@ export async function supplierPdf(shop: ShopInfo, day: string, suppliers: Suppli
   const { doc, autoTable } = await newDoc();
   suppliers.forEach((sup, idx) => {
     if (idx > 0) doc.addPage();
-    let y = header(doc, shop, "SUPPLIER ORDER", [
+    let y = header(doc, shop, "SOLD TODAY", [
       ["For date", formatDate(day)],
       ["Compiled", formatDateTime(compiledAt)],
     ]);
@@ -346,16 +340,16 @@ export async function supplierPdf(shop: ShopInfo, day: string, suppliers: Suppli
     y = Math.max(left, right);
 
     autoTable(doc, {
-      ...tableOptions([8, 44, 38, 26, 13, 15, 17, 21], [4, 5, 6, 7]),
+      ...tableOptions([8, 40, 34, 24, 22, 14, 19, 21], [4, 5, 6, 7]),
       startY: y + 5,
-      head: [["#", "Article code", "Brand / Fabric", "Size set", "Sets", "Pieces", "Rate (Rs.)", "Amount (Rs.)"]],
-      body: sup.lines.map((l, n) => [n + 1, l.articleCode, [l.brand, l.fabric].filter(Boolean).join(" / ") || "-", sizeCell(l.size, l.sizes), l.sets, l.pieces, amt(l.rate), amt(l.amount)]),
-      foot: [["", "Total", "", "", sup.totalSets, sup.totalPieces, "", amt(sup.totalAmount)]],
+      head: [["#", "Article code", "Brand / Fabric", "Size set", "Qty", "Pieces", "Your rate", "Amount (Rs.)"]],
+      body: sup.lines.map((l, n) => [n + 1, l.articleCode, [l.brand, l.fabric].filter(Boolean).join(" / ") || "-", sizeCell(l.size, l.sizes), qtyLabel(l.pieces).replace(" + ", "\n+ "), l.pieces, amt(l.rate), amt(l.amount)]),
+      foot: [["", "Total", "", "", "", sup.totalPieces, "", amt(sup.totalAmount)]],
     });
 
-    noteLines(doc, [`Bills included: ${sup.billNos.join(", ")}`, "Amounts are at the rate on your tag, before GST."], lastY(doc) + 6, CW);
+    noteLines(doc, [`Bills included: ${sup.billNos.join(", ")}`, "1 set = 24 pieces. Amounts are at your tag rate, before GST."], lastY(doc) + 6, CW);
   });
-  footer(doc, `Supplier order  |  ${formatDate(day)}  |  ${shop.name}`);
+  footer(doc, `Sold today  |  ${formatDate(day)}  |  ${shop.name}`);
   const name = suppliers.length === 1 ? `_${slug(suppliers[0].supplierName)}` : "_All_suppliers";
-  return { blob: doc.output("blob"), filename: `Supplier_order_${day}${name}.pdf` };
+  return { blob: doc.output("blob"), filename: `Sold_${day}${name}.pdf` };
 }
