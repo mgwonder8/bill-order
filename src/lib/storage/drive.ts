@@ -23,6 +23,10 @@ export async function saveTagImage(file: { name: string; type: string; buffer: B
       requestBody: { name: filename, parents: [env.driveFolderId] },
       media: { mimeType: file.type || "image/jpeg", body: Readable.from(file.buffer) },
       fields: "id, webViewLink",
+      // A service account has no storage quota of its own, so the destination
+      // folder must be inside a Shared Drive (Google Workspace); this flag is
+      // required for the API to operate on Shared Drive items at all.
+      supportsAllDrives: true,
     });
     const id = res.data.id ?? "";
     return {
@@ -41,8 +45,11 @@ export async function saveTagImage(file: { name: string; type: string; buffer: B
 /** Streams a Drive file back to the browser, authenticated as the service account. */
 export async function readDriveFile(fileId: string): Promise<{ buffer: Buffer; mimeType: string }> {
   const drive = getDriveClient();
-  const meta = await drive.files.get({ fileId, fields: "mimeType" });
-  const res = await drive.files.get({ fileId, alt: "media" }, { responseType: "arraybuffer" });
+  const meta = await drive.files.get({ fileId, fields: "mimeType", supportsAllDrives: true });
+  const res = await drive.files.get(
+    { fileId, alt: "media", supportsAllDrives: true },
+    { responseType: "arraybuffer" }
+  );
   return {
     buffer: Buffer.from(res.data as ArrayBuffer),
     mimeType: meta.data.mimeType ?? "application/octet-stream",
