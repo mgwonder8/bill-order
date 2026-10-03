@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { apiUser } from "@/lib/session";
 import { aiConfigured } from "@/lib/env";
 import { extractTag } from "@/lib/ai/extract-tag";
-import { saveTagImage } from "@/lib/storage/drive";
+import { saveTagImage } from "@/lib/storage/photos";
 import type { TagExtract } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -12,7 +12,7 @@ export const maxDuration = 60;
 const MAX_BYTES = 12 * 1024 * 1024;
 
 /**
- * Takes one tag photo, files it in Drive, and returns the fields read off it.
+ * Takes one tag photo, stores it in Supabase Storage, and returns the fields read off it.
  * Nothing is written to the ledger here: the reply is a draft the clerk confirms
  * on screen before /api/tags saves it.
  */

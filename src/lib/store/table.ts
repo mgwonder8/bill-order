@@ -1,48 +1,57 @@
-import { sheetsConfigured } from "@/lib/env";
+import { supabase } from "@/lib/supabase";
 import type { Table, TableRow } from "@/lib/store/table-types";
-import * as local from "@/lib/store/local-table";
 
 /**
- * One table API over two stores. Google Sheets is the real backing store; when no
- * spreadsheet is configured we fall back to a local JSON file so the app runs and
- * can be tested immediately. The choice is made per call, not at module load, so
- * adding credentials to .env.local takes effect on restart without code changes.
+ * Row store on Supabase Postgres. Every logical table (see schema.ts) lives in
+ * public.tagbill_rows keyed by `tab`; the identity column doubles as the row number.
  */
-async function sheets() {
-  return await import("@/lib/google/sheet-table");
-}
+const TABLE = "tagbill_rows";
+const PAGE = 1000;
 
-export function usingSheets(): boolean {
-  return sheetsConfigured();
-}
-
-export async function ensureTable(tab: string, headers: string[]): Promise<void> {
-  return usingSheets() ? (await sheets()).ensureTable(tab, headers) : local.ensureTable(tab, headers);
+function fail(action: string, error: { message: string }): never {
+  throw new Error(`Database ${action} failed: ${error.message}`);
 }
 
 export async function readTable(tab: string): Promise<Table> {
-  return usingSheets() ? (await sheets()).readTable(tab) : local.readTable(tab);
+  const rows: Table["rows"] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase()
+      .from(TABLE)
+      .select("id, data")
+      .eq("tab", tab)
+      .order("id", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) fail("read", error);
+    for (const r of data ?? []) rows.push({ rowNumber: r.id as number, data: r.data as TableRow });
+    if (!data || data.length < PAGE) break;
+  }
+  return { rows };
 }
 
 export async function appendRow(tab: string, obj: TableRow): Promise<void> {
-  return usingSheets() ? (await sheets()).appendRow(tab, obj) : local.appendRow(tab, obj);
+  return appendRows(tab, [obj]);
 }
 
 export async function appendRows(tab: string, objs: TableRow[]): Promise<void> {
-  return usingSheets() ? (await sheets()).appendRows(tab, objs) : local.appendRows(tab, objs);
+  if (objs.length === 0) return;
+  const { error } = await supabase().from(TABLE).insert(objs.map((data) => ({ tab, data })));
+  if (error) fail("insert", error);
 }
 
 export async function updateRow(tab: string, rowNumber: number, obj: TableRow): Promise<void> {
-  return usingSheets() ? (await sheets()).updateRow(tab, rowNumber, obj) : local.updateRow(tab, rowNumber, obj);
+  const { error } = await supabase().from(TABLE).update({ data: obj }).eq("tab", tab).eq("id", rowNumber);
+  if (error) fail("update", error);
 }
 
 export async function clearRow(tab: string, rowNumber: number): Promise<void> {
-  return usingSheets() ? (await sheets()).clearRow(tab, rowNumber) : local.clearRow(tab, rowNumber);
+  const { error } = await supabase().from(TABLE).delete().eq("tab", tab).eq("id", rowNumber);
+  if (error) fail("delete", error);
 }
 
 export async function findRowById(tab: string, id: string) {
-  const { rows } = await readTable(tab);
-  return rows.find((r) => r.data.id === id) ?? null;
+  const { data, error } = await supabase().from(TABLE).select("id, data").eq("tab", tab).eq("data->>id", id).maybeSingle();
+  if (error) fail("read", error);
+  return data ? { rowNumber: data.id as number, data: data.data as TableRow } : null;
 }
 
 export async function deleteRowById(tab: string, id: string): Promise<boolean> {

@@ -1,14 +1,10 @@
-import { appendRow, appendRows, clearRow, ensureTable, findRowById, readTable, updateRow } from "@/lib/store/table";
-import { HEADERS, TABS } from "@/lib/store/schema";
+import { appendRow, appendRows, clearRow, findRowById, readTable, updateRow } from "@/lib/store/table";
+import { TABS } from "@/lib/store/schema";
 import type { TableRow } from "@/lib/store/table-types";
 import { billMoney, lineMoney, money, num } from "@/lib/money";
 import { newId, nextDocNumber } from "@/lib/ids";
 import { istDay } from "@/lib/dates";
 import type { ArticleSize, Bill, BillItem, LineBase, Order, OrderItem, Tag } from "@/lib/types";
-
-async function ready(...tabs: string[]) {
-  for (const tab of tabs) await ensureTable(tab, HEADERS[tab]);
-}
 
 function toRow(obj: object): TableRow {
   const row: TableRow = {};
@@ -63,13 +59,11 @@ function rowToSize(d: TableRow): ArticleSize {
 }
 
 export async function listTags(): Promise<Tag[]> {
-  await ready(TABS.tags);
   const { rows } = await readTable(TABS.tags);
   return rows.map((r) => rowToTag(r.data)).reverse();
 }
 
 export async function getTag(id: string): Promise<{ tag: Tag; sizes: ArticleSize[] } | null> {
-  await ready(TABS.tags, TABS.sizes);
   const row = await findRowById(TABS.tags, id);
   if (!row) return null;
   const sizes = (await listSizes()).filter((z) => z.tagId === id);
@@ -77,7 +71,6 @@ export async function getTag(id: string): Promise<{ tag: Tag; sizes: ArticleSize
 }
 
 export async function listSizes(): Promise<ArticleSize[]> {
-  await ready(TABS.sizes);
   const { rows } = await readTable(TABS.sizes);
   return rows.map((r) => rowToSize(r.data));
 }
@@ -93,7 +86,6 @@ export async function saveTag(input: {
   tag: Omit<Tag, "id" | "createdAt">;
   sets: { size: string; sizes: string; pcsPerSet: number; rate: number }[];
 }): Promise<{ tagId: string; sizes: ArticleSize[] }> {
-  await ready(TABS.tags, TABS.sizes);
   const createdAt = new Date().toISOString();
   const existing = (await listTags()).find(
     (t) => same(t.designNo, input.tag.designNo) && same(t.supplierName, input.tag.supplierName)
@@ -179,13 +171,11 @@ function rowToOrderItem(d: TableRow): OrderItem {
 }
 
 export async function listOrders(): Promise<Order[]> {
-  await ready(TABS.orders);
   const { rows } = await readTable(TABS.orders);
   return rows.map((r) => rowToOrder(r.data)).reverse();
 }
 
 export async function getOrder(id: string): Promise<{ order: Order; items: OrderItem[] } | null> {
-  await ready(TABS.orders, TABS.orderItems);
   const row = await findRowById(TABS.orders, id);
   if (!row) return null;
   const { rows } = await readTable(TABS.orderItems);
@@ -217,7 +207,6 @@ function orderTotals(lines: OrderInput["lines"]) {
 }
 
 export async function createOrder(input: OrderInput, user: string): Promise<string> {
-  await ready(TABS.orders, TABS.orderItems);
   const orderNo = nextDocNumber("ORD", (await listOrders()).map((o) => o.orderNo));
   const id = newId("ord");
   const { lines, ...head } = input;
@@ -240,7 +229,6 @@ export async function createOrder(input: OrderInput, user: string): Promise<stri
 
 /** Replaces an open order's details and lines. Billed orders are frozen. */
 export async function updateOrder(id: string, input: OrderInput): Promise<"ok" | "missing" | "billed"> {
-  await ready(TABS.orders, TABS.orderItems);
   const row = await findRowById(TABS.orders, id);
   if (!row) return "missing";
   const current = rowToOrder(row.data);
@@ -300,19 +288,16 @@ function rowToBillItem(d: TableRow): BillItem {
 }
 
 export async function listBills(): Promise<Bill[]> {
-  await ready(TABS.bills);
   const { rows } = await readTable(TABS.bills);
   return rows.map((r) => rowToBill(r.data)).reverse();
 }
 
 async function listBillItems(): Promise<BillItem[]> {
-  await ready(TABS.billItems);
   const { rows } = await readTable(TABS.billItems);
   return rows.map((r) => rowToBillItem(r.data));
 }
 
 export async function getBill(id: string): Promise<{ bill: Bill; items: BillItem[] } | null> {
-  await ready(TABS.bills, TABS.billItems);
   const row = await findRowById(TABS.bills, id);
   if (!row) return null;
   return { bill: rowToBill(row.data), items: (await listBillItems()).filter((i) => i.billId === id) };
@@ -332,7 +317,6 @@ export async function billOrder(
   },
   user: string
 ): Promise<{ billId: string } | { error: string }> {
-  await ready(TABS.bills, TABS.billItems, TABS.orders);
   const found = await getOrder(orderId);
   if (!found) return { error: "This order no longer exists." };
   if (found.order.status === "billed") return { error: "This order has already been billed." };

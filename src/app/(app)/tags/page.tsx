@@ -47,7 +47,7 @@ export default async function TagsPage() {
             <Link key={t.id} href={`/tags/${t.id}`} className="group">
               <Card className="flex h-full gap-4 p-4 transition-colors group-hover:border-accent">
                 {t.imageUrl ? (
-                  // Tag photos come from Drive or local disk at unknown sizes, so plain img.
+                  // Tag photos come from Supabase Storage at unknown sizes, so plain img.
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={t.imageUrl} alt="" className="h-24 w-20 shrink-0 rounded-xl border border-line object-cover" />
                 ) : (

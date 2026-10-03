@@ -1,19 +1,16 @@
 import { NextResponse } from "next/server";
 import { apiUser } from "@/lib/session";
-import { readDriveFile } from "@/lib/storage/drive";
+import { readPhoto } from "@/lib/storage/photos";
 
 export const runtime = "nodejs";
 
-/**
- * Serves a tag photo out of Drive. Service account uploads are not publicly
- * readable, so signed in staff fetch them through here rather than a Drive link.
- */
+/** Serves a tag photo from the private bucket to signed-in staff. */
 export async function GET(_req: Request, { params }: RouteContext<"/api/media/[id]">) {
   if (!(await apiUser())) return new NextResponse("Not signed in", { status: 401 });
 
   const { id } = await params;
   try {
-    const { buffer, mimeType } = await readDriveFile(id);
+    const { buffer, mimeType } = await readPhoto(decodeURIComponent(id));
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         "Content-Type": mimeType,
@@ -21,7 +18,7 @@ export async function GET(_req: Request, { params }: RouteContext<"/api/media/[i
       },
     });
   } catch (err) {
-    console.error("[media] could not read Drive file", id, err);
+    console.error("[media] could not read photo", id, err);
     return new NextResponse("Not found", { status: 404 });
   }
 }

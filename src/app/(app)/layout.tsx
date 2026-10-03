@@ -2,8 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { endSession } from "@/lib/auth";
-import { usingSheets } from "@/lib/store/table";
-import { driveConfigured } from "@/lib/env";
 import { BottomNav, SideNav } from "@/components/nav";
 
 async function signOut() {
@@ -14,8 +12,6 @@ async function signOut() {
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const user = await requireUser();
-  const local = !usingSheets();
-  const noDrive = !driveConfigured();
 
   return (
     <div className="min-h-dvh md:grid md:grid-cols-[228px_1fr]">
@@ -52,13 +48,6 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
             </button>
           </form>
         </header>
-
-        {(local || noDrive) && (
-          <div className="no-print border-b border-line bg-warn/10 px-5 py-2 text-xs text-warn md:px-8">
-            {local && <>Running on the local file store. Add your Google Sheets keys to .env.local to write to the spreadsheet. </>}
-            {!local && noDrive && <>Tag photos are saving to local disk. Set GOOGLE_DRIVE_TAGS_FOLDER_ID to store them in Drive.</>}
-          </div>
-        )}
 
         <main className="flex-1 px-5 py-6 pb-24 md:px-8 md:py-8 md:pb-10">{children}</main>
         <BottomNav />
