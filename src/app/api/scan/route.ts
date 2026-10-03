@@ -32,7 +32,14 @@ export async function POST(req: Request) {
   const image = { name: file.name || "tag.jpg", type: file.type || "image/jpeg", buffer };
 
   // The photo is worth keeping even when the reading fails, so store it first.
-  const stored = await saveTagImage(image);
+  let stored;
+  try {
+    stored = await saveTagImage(image);
+  } catch (err) {
+    console.error("[scan] storing the photo failed", err);
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: `Could not store the photo: ${message}` }, { status: 500 });
+  }
 
   if (!aiConfigured()) {
     return NextResponse.json({
