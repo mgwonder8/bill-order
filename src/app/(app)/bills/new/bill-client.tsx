@@ -91,7 +91,7 @@ export function BillClient({ stock: initialStock, customers }: { stock: StockIte
     setLines((ls) =>
       ls.some((l) => l.item.id === item.id)
         ? ls.map((l) => (l.item.id === item.id ? { ...l, sets: l.sets + 1 } : l))
-        : [{ key: key(), item, sets: 1, loose: 0, rate: item.sellRate > 0 ? String(item.sellRate) : "", discount: allPct }, ...ls]
+        : [{ key: key(), item, sets: 1, loose: 0, rate: String(item.sellRate > 0 ? item.sellRate : item.rate > 0 ? item.rate : ""), discount: allPct }, ...ls]
     );
     setMatches(null);
     setScanNote(null);
@@ -110,7 +110,6 @@ export function BillClient({ stock: initialStock, customers }: { stock: StockIte
     if (typeof made === "string") return setScanNote(made);
     setStock((s) => [...made, ...s.filter((z) => !made.some((m) => m.id === z.id))]);
     offer(made);
-    setScanNote(`${made[0].articleCode} is new, so it is saved with 0 in stock. You can still bill it.`);
   }
 
   function patch(k: string, p: Partial<Line>) {
@@ -130,7 +129,7 @@ export function BillClient({ stock: initialStock, customers }: { stock: StockIte
       const data = await res.json();
       const x = data.extract as TagExtract | undefined;
       if (!res.ok || !x?.designNo) {
-        setScanNote(data.error ?? "Could not read the article code. Type it below to add it.");
+        setScanNote(data.error ?? "Could not read the article code. Type the code below to add it.");
         setPicking(true);
         return;
       }
@@ -148,7 +147,7 @@ export function BillClient({ stock: initialStock, customers }: { stock: StockIte
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = q ? stock.filter((z) => `${z.articleCode} ${z.brand} ${z.supplierName} ${z.size}`.toLowerCase().includes(q)) : stock;
-    return [...list].sort((a, b) => Number(b.inStock > 0) - Number(a.inStock > 0)).slice(0, 12);
+    return list.slice(0, 12);
   }, [stock, query]);
 
   function pickCustomer(name: string) {
@@ -182,12 +181,11 @@ export function BillClient({ stock: initialStock, customers }: { stock: StockIte
 
   async function save() {
     setError(null);
-    if (lines.length === 0) return setError("Scan a tag or pick an item from stock.");
+    if (lines.length === 0) return setError("Scan a tag or find an article to add an item.");
     const noQty = priced.find((l) => l.pieces <= 0);
     if (noQty) return setError(`Enter a quantity for ${noQty.item.articleCode} (${noQty.item.size}).`);
     const noRate = priced.find((l) => l.rateN <= 0);
     if (noRate) return setError(`Enter the price for ${noRate.item.articleCode} (${noRate.item.size}).`);
-    if (!customerName.trim()) return setError("Enter the customer name.");
     setSaving(true);
     try {
       const res = await fetch("/api/bills", {
@@ -232,7 +230,7 @@ export function BillClient({ stock: initialStock, customers }: { stock: StockIte
               {reading ? "Reading…" : "Scan tag"}
             </button>
             <button type="button" onClick={() => setPicking((p) => !p)} className={`btn ${picking ? "btn-soft" : "btn-outline"}`}>
-              <Search size={18} /> Pick from stock
+              <Search size={18} /> Find article
             </button>
           </div>
 
@@ -255,7 +253,7 @@ export function BillClient({ stock: initialStock, customers }: { stock: StockIte
                 {matches.items.map((z) => (
                   <button key={z.id} type="button" onClick={() => add(z)} className="rounded-xl border border-line bg-surface p-3 text-left hover:border-accent">
                     <p className="font-extrabold">{z.size}</p>
-                    <p className={`text-xs font-semibold ${z.inStock > 0 ? "text-ok" : "text-danger"}`}>{z.inStock > 0 ? `${qtyLabel(z.inStock)} in stock` : "Out of stock"}</p>
+                    <p className="text-xs font-semibold text-muted tnum">{formatINR(z.sellRate > 0 ? z.sellRate : z.rate)}/pc</p>
                   </button>
                 ))}
               </div>
@@ -278,10 +276,9 @@ export function BillClient({ stock: initialStock, customers }: { stock: StockIte
                             {z.articleCode} <span className="text-accent">· {z.size}</span>
                           </p>
                           <p className="truncate text-xs text-muted">
-                            {z.sellRate > 0 ? `${formatINR(z.sellRate)}/pc` : "No selling price"} · {z.supplierName}
+                            {formatINR(z.sellRate > 0 ? z.sellRate : z.rate)}/pc · {z.supplierName}
                           </p>
                         </div>
-                        <span className={`text-xs font-bold whitespace-nowrap ${z.inStock > 0 ? "text-ok" : "text-danger"}`}>{z.inStock > 0 ? qtyLabel(z.inStock) : "Out"}</span>
                       </button>
                     </li>
                   ))}
@@ -329,7 +326,6 @@ export function BillClient({ stock: initialStock, customers }: { stock: StockIte
             <ul className="divide-y divide-line">
               {priced.map((l) => {
                 const m = lineMoney({ pieces: l.pieces, rate: l.rateN, discountPct: l.pct });
-                const short = l.pieces > l.item.inStock;
                 return (
                   <li key={l.key} className="rise p-4 md:px-5">
                     <div className="flex items-start gap-3">
@@ -358,11 +354,6 @@ export function BillClient({ stock: initialStock, customers }: { stock: StockIte
                       </p>
                     </div>
 
-                    {short && (
-                      <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-warn-soft px-2.5 py-1 text-xs font-bold text-warn">
-                        <AlertTriangle size={14} /> {l.item.inStock > 0 ? `Only ${qtyLabel(l.item.inStock)} in stock` : "Out of stock"}. You can still bill it.
-                      </p>
-                    )}
 
                     <div className="mt-3 grid grid-cols-[1fr_auto] items-end gap-3">
                       <Money label="Price / pc" value={l.rate} onChange={(v) => patch(l.key, { rate: v })} highlight={l.rateN <= 0} />
@@ -390,7 +381,7 @@ export function BillClient({ stock: initialStock, customers }: { stock: StockIte
             ))}
           </datalist>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <Field id="cust" label="Name / shop" value={customerName} onChange={pickCustomer} list="customer-names" />
+            <Field id="cust" label="Name / shop (optional)" value={customerName} onChange={pickCustomer} list="customer-names" placeholder="Walk-in customer" />
             <Field id="phone" label="Phone (WhatsApp)" value={customerPhone} onChange={pickPhone} inputMode="tel" />
           </div>
           <button type="button" onClick={() => setMore((m) => !m)} className="mt-3 inline-flex items-center gap-1 text-sm font-bold text-accent">
@@ -448,13 +439,13 @@ function PctInput({ id, value, onChange, label }: { id: string; value: string; o
   );
 }
 
-function Field({ id, label, value, onChange, inputMode, list }: { id: string; label: string; value: string; onChange: (v: string) => void; inputMode?: "tel"; list?: string }) {
+function Field({ id, label, value, onChange, inputMode, list, placeholder }: { id: string; label: string; value: string; onChange: (v: string) => void; inputMode?: "tel"; list?: string; placeholder?: string }) {
   return (
     <div>
       <label className="label" htmlFor={id}>
         {label}
       </label>
-      <input id={id} className="field" value={value} inputMode={inputMode} list={list} autoComplete="off" onChange={(e) => onChange(e.target.value)} />
+      <input id={id} className="field" value={value} inputMode={inputMode} list={list} placeholder={placeholder} autoComplete="off" onChange={(e) => onChange(e.target.value)} />
     </div>
   );
 }

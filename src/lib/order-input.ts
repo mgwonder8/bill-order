@@ -16,7 +16,7 @@ export const OrderBody = z.object({
 });
 
 export const BillBody = z.object({
-  customerName: z.string().trim().min(1, "Enter the customer name"),
+  customerName: z.string().trim().default(""),
   customerPhone: z.string().trim().default(""),
   customerGstin: z.string().trim().toUpperCase().default(""),
   customerAddress: z.string().trim().default(""),

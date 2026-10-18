@@ -19,6 +19,7 @@ function s(v: string | undefined): string {
 
 /** Name given to articles saved from a bill before their supplier is known. */
 export const UNKNOWN_SUPPLIER = "Unknown supplier";
+const WALK_IN = "Walk-in customer";
 const norm = (v: string) => v.trim().toUpperCase().replace(/\s+/g, " ");
 const same = (a: string, b: string) => norm(a) === norm(b);
 const phoneKey = (v: string) => v.replace(/\D/g, "").slice(-10);
@@ -497,7 +498,9 @@ export async function createBill(input: BillInput, user: string): Promise<{ bill
   }
   if (lines.length === 0) return { error: "Add at least one item." };
 
-  const customer = await upsertCustomer({ name: input.customerName, phone: input.customerPhone, gstin: input.customerGstin, address: input.customerAddress });
+  // A quick sale with no name and no phone is a walk-in: billed, but not saved as a customer.
+  const customerName = input.customerName.trim() || WALK_IN;
+  const customer = input.customerPhone.trim() || customerName !== WALK_IN ? await upsertCustomer({ name: customerName, phone: input.customerPhone, gstin: input.customerGstin, address: input.customerAddress }) : null;
   const totals = billMoney(lines);
   const billNo = nextDocNumber("INV", (await listBills()).map((b) => b.billNo));
   const billId = newId("bil");
@@ -509,8 +512,8 @@ export async function createBill(input: BillInput, user: string): Promise<{ bill
       billNo,
       createdAt: new Date().toISOString(),
       createdBy: user,
-      customerId: customer.id,
-      customerName: input.customerName,
+      customerId: customer?.id ?? "",
+      customerName,
       customerPhone: input.customerPhone,
       customerGstin: input.customerGstin,
       customerAddress: input.customerAddress,
