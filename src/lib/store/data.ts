@@ -17,6 +17,8 @@ function s(v: string | undefined): string {
   return v ?? "";
 }
 
+/** Name given to articles saved from a bill before their supplier is known. */
+export const UNKNOWN_SUPPLIER = "Unknown supplier";
 const norm = (v: string) => v.trim().toUpperCase().replace(/\s+/g, " ");
 const same = (a: string, b: string) => norm(a) === norm(b);
 const phoneKey = (v: string) => v.replace(/\D/g, "").slice(-10);
@@ -165,7 +167,36 @@ export async function saveTag(input: {
     address: input.tag.supplierAddress,
   });
 
-  const existing = (await listTags()).find((t) => same(t.designNo, input.tag.designNo) && same(t.supplierName, input.tag.supplierName));
+  const tagRows = (await readTable(TABS.tags)).rows;
+  let existingRow = tagRows.find((r) => same(r.data.designNo ?? "", input.tag.designNo) && same(r.data.supplierName ?? "", input.tag.supplierName));
+  // An article billed before its supplier was known is adopted by the supplier's real tag instead of duplicated.
+  if (!existingRow && !same(supplier.name, UNKNOWN_SUPPLIER)) {
+    const orphan = tagRows.find((r) => same(r.data.designNo ?? "", input.tag.designNo) && same(r.data.supplierName ?? "", UNKNOWN_SUPPLIER));
+    if (orphan) {
+      const cur = rowToTag(orphan.data);
+      const adopted: Tag = {
+        ...cur,
+        supplierId: supplier.id,
+        supplierName: supplier.name,
+        supplierAddress: supplier.address,
+        supplierPhone: supplier.phone,
+        supplierEmail: supplier.email,
+        supplierGstin: supplier.gstin,
+        brand: cur.brand || input.tag.brand,
+        fabric: cur.fabric || input.tag.fabric,
+        imageUrl: cur.imageUrl || input.tag.imageUrl,
+        driveFileId: cur.driveFileId || input.tag.driveFileId,
+      };
+      await updateRow(TABS.tags, orphan.rowNumber, toRow(adopted));
+      existingRow = { rowNumber: orphan.rowNumber, data: toRow(adopted) };
+      // Drop the placeholder supplier once no article uses it.
+      if (!tagRows.some((r) => r.data.id !== orphan.data.id && same(r.data.supplierName ?? "", UNKNOWN_SUPPLIER))) {
+        const placeholder = (await readTable(TABS.suppliers)).rows.find((r) => same(r.data.name ?? "", UNKNOWN_SUPPLIER));
+        if (placeholder) await clearRow(TABS.suppliers, placeholder.rowNumber);
+      }
+    }
+  }
+  const existing = existingRow ? rowToTag(existingRow.data) : undefined;
   const tagId = existing?.id ?? newId("tag");
   if (!existing) await appendRow(TABS.tags, toRow({ ...input.tag, supplierName: supplier.name, id: tagId, createdAt, supplierId: supplier.id }));
 
@@ -176,8 +207,8 @@ export async function saveTag(input: {
     const row = rows.find((r) => r.data.tagId === tagId && r.data.size === z.size);
     if (row) {
       const current = rowToSize(row.data);
-      const updated = { ...current, rate: money(z.rate), supplierGstin: supplier.gstin, supplierPhone: supplier.phone };
-      if (updated.rate !== current.rate || updated.supplierGstin !== current.supplierGstin || updated.supplierPhone !== current.supplierPhone) {
+      const updated = { ...current, rate: money(z.rate), supplierName: supplier.name, supplierGstin: supplier.gstin, supplierPhone: supplier.phone };
+      if (updated.rate !== current.rate || updated.supplierName !== current.supplierName || updated.supplierGstin !== current.supplierGstin || updated.supplierPhone !== current.supplierPhone) {
         await updateRow(TABS.sizes, row.rowNumber, toRow(updated));
       }
       result.push(updated);

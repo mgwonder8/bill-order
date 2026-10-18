@@ -2,11 +2,10 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { AlertTriangle, Camera, ChevronDown, Loader2, Percent, Receipt, Search, Trash2, X } from "lucide-react";
+import { AlertTriangle, Camera, ChevronDown, Loader2, Percent, Plus, Receipt, Search, Trash2, X } from "lucide-react";
 import { billMoney, formatINR, lineMoney } from "@/lib/money";
 import { SET_PCS, qtyLabel } from "@/lib/sets";
-import type { Customer, StockItem, TagExtract } from "@/lib/types";
+import type { ArticleSize, Customer, StockItem, TagExtract } from "@/lib/types";
 import { Money, Stepper } from "@/components/inputs";
 
 type Line = {
@@ -34,13 +33,46 @@ function matchStock(stock: StockItem[], designNo: string): StockItem[] {
   return num.length >= 3 ? stock.filter((z) => digits(z.articleCode) === num) : [];
 }
 
-export function BillClient({ stock, customers }: { stock: StockItem[]; customers: Customer[] }) {
+const DEFAULT_RANGES = [
+  { sizes: "22/24/26/28", rate: 0 },
+  { sizes: "30/32/34/36", rate: 0 },
+];
+
+/** Saves an article that is not in the system yet so it can be billed straight away, with 0 in stock. */
+async function createArticle(a: Partial<TagExtract> & { designNo: string }): Promise<StockItem[] | string> {
+  const read = (a.sizeRates ?? []).filter((r) => r.sizes.length > 0).map((r) => ({ sizes: r.sizes.join("/"), rate: Number(r.rate) || 0 }));
+  const res = await fetch("/api/tags", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      supplierName: a.supplierName?.trim() || "Unknown supplier",
+      supplierAddress: a.supplierAddress ?? "",
+      supplierPhone: a.supplierPhone ?? "",
+      supplierEmail: a.supplierEmail ?? "",
+      supplierGstin: a.supplierGstin ?? "",
+      brand: a.brand ?? "",
+      designNo: a.designNo.trim().replace(/[.s]+$/, ""),
+      fabric: a.fabric ?? "",
+      gsm: a.gsm ?? "",
+      color: a.color ?? "",
+      remarks: a.remarks ?? "",
+      sets: read.length ? read : DEFAULT_RANGES,
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) return data.error ?? "Could not save this article.";
+  return (data.sizes as ArticleSize[]).map((z) => ({ ...z, orderedPieces: 0, soldPieces: 0, inStock: 0 }));
+}
+
+export function BillClient({ stock: initialStock, customers }: { stock: StockItem[]; customers: Customer[] }) {
   const router = useRouter();
+  const [stock, setStock] = useState(initialStock);
   const camera = useRef<HTMLInputElement>(null);
   const [lines, setLines] = useState<Line[]>([]);
   const [query, setQuery] = useState("");
   const [picking, setPicking] = useState(false);
   const [reading, setReading] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [matches, setMatches] = useState<{ title: string; items: StockItem[] } | null>(null);
   const [scanNote, setScanNote] = useState<string | null>(null);
 
@@ -65,6 +97,22 @@ export function BillClient({ stock, customers }: { stock: StockItem[]; customers
     setScanNote(null);
   }
 
+  /** Offers the size ranges of an article: straight in if there is one, otherwise ask which. */
+  function offer(items: StockItem[]) {
+    if (items.length === 1) return add(items[0]);
+    setMatches({ title: `${items[0].articleCode}: which size range?`, items });
+    setScanNote(null);
+  }
+
+  /** Creates an article that is not saved yet and offers it, so billing is never blocked. */
+  async function addNew(a: Partial<TagExtract> & { designNo: string }) {
+    const made = await createArticle(a);
+    if (typeof made === "string") return setScanNote(made);
+    setStock((s) => [...made, ...s.filter((z) => !made.some((m) => m.id === z.id))]);
+    offer(made);
+    setScanNote(`${made[0].articleCode} is new, so it is saved with 0 in stock. You can still bill it.`);
+  }
+
   function patch(k: string, p: Partial<Line>) {
     setLines((ls) => ls.map((l) => (l.key === k ? { ...l, ...p } : l)));
   }
@@ -82,17 +130,13 @@ export function BillClient({ stock, customers }: { stock: StockItem[]; customers
       const data = await res.json();
       const x = data.extract as TagExtract | undefined;
       if (!res.ok || !x?.designNo) {
-        setScanNote(data.error ?? "Could not read the article code. Try again or pick from stock.");
+        setScanNote(data.error ?? "Could not read the article code. Type it below to add it.");
+        setPicking(true);
         return;
       }
       const found = matchStock(stock, x.designNo);
-      if (found.length === 0) {
-        setScanNote(`${x.designNo} is not in stock yet. Order it from the supplier first, or pick from stock.`);
-      } else if (found.length === 1) {
-        add(found[0]);
-      } else {
-        setMatches({ title: `${found[0].articleCode}: which size range?`, items: found });
-      }
+      if (found.length > 0) offer(found);
+      else await addNew(x);
     } catch {
       setScanNote("Could not reach the server. Check your internet and try again.");
     } finally {
@@ -195,14 +239,7 @@ export function BillClient({ stock, customers }: { stock: StockItem[]; customers
           {scanNote && (
             <p className="rise mt-3 flex items-start gap-2 rounded-xl bg-warn-soft px-3 py-2.5 text-sm font-medium text-warn">
               <AlertTriangle size={17} className="mt-px shrink-0" />
-              <span>
-                {scanNote}{" "}
-                {scanNote.includes("not in stock") && (
-                  <Link href="/orders/new" className="font-bold underline">
-                    Order from supplier
-                  </Link>
-                )}
-              </span>
+              <span>{scanNote}</span>
             </p>
           )}
 
@@ -231,14 +268,7 @@ export function BillClient({ stock, customers }: { stock: StockItem[]; customers
                 <Search className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted" size={18} />
                 <input className="field pl-10" placeholder="Article code, brand or supplier" value={query} onChange={(e) => setQuery(e.target.value)} autoFocus />
               </div>
-              {stock.length === 0 ? (
-                <p className="mt-3 text-sm text-muted">
-                  Nothing in stock yet.{" "}
-                  <Link href="/orders/new" className="font-bold text-accent">
-                    Order from a supplier
-                  </Link>
-                </p>
-              ) : (
+              {results.length > 0 && (
                 <ul className="mt-2 max-h-80 divide-y divide-line overflow-y-auto">
                   {results.map((z) => (
                     <li key={z.id}>
@@ -257,6 +287,23 @@ export function BillClient({ stock, customers }: { stock: StockItem[]; customers
                   ))}
                 </ul>
               )}
+              {query.trim() && !stock.some((z) => code(z.articleCode) === code(query)) && (
+                <button
+                  type="button"
+                  disabled={creating}
+                  onClick={async () => {
+                    setCreating(true);
+                    await addNew({ designNo: query.trim() });
+                    setCreating(false);
+                    setQuery("");
+                  }}
+                  className="btn btn-soft mt-2 w-full"
+                >
+                  {creating ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
+                  Add {query.trim().toUpperCase()} as a new article
+                </button>
+              )}
+              {stock.length === 0 && !query.trim() && <p className="mt-3 text-sm text-muted">Type an article code to add it, or scan its tag.</p>}
             </div>
           )}
         </section>
