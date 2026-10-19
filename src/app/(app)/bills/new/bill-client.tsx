@@ -5,11 +5,18 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronDown, Loader2, Pencil, Percent } from "lucide-react";
 import { billMoney, formatINR, lineMoney } from "@/lib/money";
-import type { CustomerOrder, CustomerOrderItem, GstMode } from "@/lib/types";
+import type { Customer, CustomerOrder, CustomerOrderItem, GstMode } from "@/lib/types";
+import { CustomerPicker, type CustomerDraft } from "@/components/customer-picker";
 
-/** Turns a saved customer order into a bill: choose with or without GST, optional discount, confirm. */
-export function BillClient({ order, items }: { order: CustomerOrder; items: CustomerOrderItem[] }) {
+/** Turns a saved customer order into a bill: customer, with or without GST, optional discount, confirm. */
+export function BillClient({ order, items, customers }: { order: CustomerOrder; items: CustomerOrderItem[]; customers: Customer[] }) {
   const router = useRouter();
+  const [customer, setCustomer] = useState<CustomerDraft>({
+    name: order.customerName === "Walk-in customer" ? "" : order.customerName,
+    phone: order.customerPhone,
+    gstin: order.customerGstin,
+    address: order.customerAddress,
+  });
   const [gstMode, setGstMode] = useState<GstMode>("with");
   const [discounts, setDiscounts] = useState<Record<string, string>>({});
   const [allPct, setAllPct] = useState("");
@@ -34,7 +41,17 @@ export function BillClient({ order, items }: { order: CustomerOrder; items: Cust
       const res = await fetch("/api/bills", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: order.id, gstMode, hsn, notes, discounts: Object.fromEntries(items.map((i) => [i.id, pct(i.id)])) }),
+        body: JSON.stringify({
+          orderId: order.id,
+          customerName: customer.name,
+          customerPhone: customer.phone,
+          customerGstin: customer.gstin,
+          customerAddress: customer.address,
+          gstMode,
+          hsn,
+          notes,
+          discounts: Object.fromEntries(items.map((i) => [i.id, pct(i.id)])),
+        }),
       });
       const data = await res.json();
       if (!res.ok) return setError(data.error ?? "Could not make this bill.");
@@ -57,6 +74,12 @@ export function BillClient({ order, items }: { order: CustomerOrder; items: Cust
   return (
     <div className="grid grid-cols-1 gap-5 pb-28 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:pb-0">
       <div className="space-y-5">
+        <section className="card p-4 md:p-5">
+          <h2 className="mb-3 font-bold">Bill to</h2>
+          <CustomerPicker customers={customers} value={customer} onChange={setCustomer} />
+          <p className="mt-2 text-xs text-muted">Saved to this customer for next time. Leave empty for a walk-in.</p>
+        </section>
+
         <section className="card p-4 md:p-5">
           <p className="mb-2 font-bold">GST on this bill</p>
           <div className="grid grid-cols-2 gap-2 rounded-2xl bg-background p-1.5">
@@ -82,7 +105,7 @@ export function BillClient({ order, items }: { order: CustomerOrder; items: Cust
         <section className="card overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line p-4 md:px-5">
             <div>
-              <h2 className="font-bold">{order.customerName}</h2>
+              <h2 className="font-bold">Items</h2>
               <p className="text-xs text-muted tnum">
                 {order.orderNo} · {items.length} line{items.length === 1 ? "" : "s"}
               </p>

@@ -566,6 +566,10 @@ export async function getBill(id: string): Promise<{ bill: Bill; items: BillItem
 }
 
 export type BillInput = {
+  customerName: string;
+  customerPhone: string;
+  customerGstin: string;
+  customerAddress: string;
   orderId: string;
   gstMode: GstMode;
   hsn: string;
@@ -585,7 +589,8 @@ export async function billCustomerOrder(input: BillInput, user: string): Promise
   const totals = billMoney(lines, input.gstMode);
   const billNo = nextDocNumber("INV", (await listBills()).map((b) => b.billNo));
   const billId = newId("bil");
-  const o = found.order;
+  // Customer details filled or changed on the bill screen are saved to the bill, the order and the customer list.
+  const o = { ...found.order, ...(await customerFor(input)) };
 
   await appendRow(
     TABS.bills,

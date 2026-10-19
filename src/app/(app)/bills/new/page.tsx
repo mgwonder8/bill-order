@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ChevronRight, ClipboardList } from "lucide-react";
 import { requireUser } from "@/lib/session";
-import { getCustomerOrder, listCustomerOrders } from "@/lib/store/data";
+import { getCustomerOrder, listCustomerOrders, listCustomers } from "@/lib/store/data";
 import { formatDateTime } from "@/lib/dates";
 import { Card, EmptyState, PageHeader } from "@/components/ui";
 import { BillClient } from "./bill-client";
@@ -45,14 +45,14 @@ export default async function NewBillPage({ searchParams }: PageProps<"/bills/ne
     );
   }
 
-  const found = await getCustomerOrder(orderId);
+  const [found, customers] = await Promise.all([getCustomerOrder(orderId), listCustomers()]);
   if (!found) notFound();
   if (found.order.status === "billed") redirect(`/bills/${found.order.billId}`);
 
   return (
     <>
       <PageHeader step={2} back={{ href: `/customer-orders/${orderId}`, label: `Order ${found.order.orderNo}` }} title="Make the bill" subtitle="Choose with or without GST, add a discount if you want, then confirm." />
-      <BillClient order={found.order} items={found.items} />
+      <BillClient order={found.order} items={found.items} customers={customers} />
     </>
   );
 }

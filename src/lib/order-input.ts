@@ -38,6 +38,7 @@ export const CustomerOrderBody = z.object({
 });
 
 export const BillBody = z.object({
+  ...customer,
   orderId: z.string().trim().min(1),
   gstMode: z.enum(["with", "without"]).default("with"),
   hsn: z.string().trim().default(""),

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, ChevronRight, ClipboardList, IndianRupee, Layers, PackagePlus, ScanLine } from "lucide-react";
+import { ArrowRight, ClipboardList, IndianRupee, Layers, ScanLine } from "lucide-react";
 import { requireUser } from "@/lib/session";
 import { listBills, listCustomerOrders } from "@/lib/store/data";
 import { formatINR } from "@/lib/money";
@@ -62,17 +62,6 @@ export default async function HomePage() {
           <ArrowRight className="shrink-0 text-accent transition-transform group-hover:translate-x-0.5" size={22} />
         </Link>
       </div>
-
-      <Link href="/orders/new" className="card mt-3 flex items-center gap-3 p-4 transition-colors hover:border-accent">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent">
-          <PackagePlus size={19} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block font-bold">Order from supplier</span>
-          <span className="block truncate text-sm text-muted">Make a purchase order and send it on WhatsApp</span>
-        </span>
-        <ChevronRight size={18} className="text-muted" />
-      </Link>
 
       <h2 className="mt-7 mb-3 text-base font-bold">Today</h2>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
