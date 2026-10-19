@@ -1,8 +1,7 @@
 import { formatRs } from "@/lib/money";
 import { formatDate, formatDateTime } from "@/lib/dates";
-import { qtyLabel } from "@/lib/sets";
-import type { Bill, BillItem, Order, OrderItem, ShopInfo } from "@/lib/types";
-import type { SupplierDay } from "@/lib/store/data";
+import type { Bill, BillItem, CustomerOrder, CustomerOrderItem, Order, OrderItem, ShopInfo } from "@/lib/types";
+import type { CompileSupplier } from "@/lib/store/data";
 
 /** Short WhatsApp-friendly summaries that go along with (or instead of) the PDF. */
 
@@ -18,38 +17,50 @@ export function orderMessage(shop: ShopInfo, order: Order, items: OrderItem[]): 
     "",
     `*Total: ${order.totalSets} sets = ${order.totalPieces} pcs*`,
     `Amount at your rates: ${formatRs(order.totalAmount)}`,
-    "1 set = 24 pieces.",
+    ...(order.notes ? [`Note: ${order.notes}`] : []),
+  ].join("\n");
+}
+
+export function customerOrderMessage(shop: ShopInfo, order: CustomerOrder, items: CustomerOrderItem[]): string {
+  const lines = items.map((i) => `• ${i.articleCode} (${i.size}) – ${i.sets} set${i.sets === 1 ? "" : "s"}, ${i.pieces} pcs @ ${formatRs(i.rate)}`);
+  return [
+    `*Order form ${order.orderNo}* from ${shop.name}`,
+    `Date: ${formatDateTime(order.createdAt)}`,
+    `Customer: ${order.customerName}`,
+    "",
+    ...lines,
+    "",
+    `*Total: ${order.totalSets} sets = ${order.totalPieces} pcs, ${formatRs(order.totalAmount)}*`,
     ...(order.notes ? [`Note: ${order.notes}`] : []),
   ].join("\n");
 }
 
 export function billMessage(shop: ShopInfo, bill: Bill, items: BillItem[]): string {
+  const withGst = bill.gstMode === "with";
   return [
     `*Bill ${bill.billNo}* from ${shop.name}`,
     `Date: ${formatDateTime(bill.createdAt)}`,
     `Customer: ${bill.customerName}`,
     "",
-    `${items.length} item${items.length === 1 ? "" : "s"}, ${qtyLabel(bill.totalPieces)} (${bill.totalPieces} pcs)`,
+    `${items.length} item${items.length === 1 ? "" : "s"}, ${bill.totalSets} sets = ${bill.totalPieces} pcs`,
     ...(bill.discountAmount > 0 ? [`Discount: ${formatRs(bill.discountAmount)}`] : []),
-    `CGST ${bill.cgstRate}%: ${formatRs(bill.cgstAmount)}`,
-    `SGST ${bill.sgstRate}%: ${formatRs(bill.sgstAmount)}`,
+    ...(withGst ? [`CGST ${bill.cgstRate}%: ${formatRs(bill.cgstAmount)}`, `SGST ${bill.sgstRate}%: ${formatRs(bill.sgstAmount)}`] : ["Without GST"]),
     `*Total: ${formatRs(bill.total)}*`,
     "",
-    "Thank you for your business.",
+    `Subject to ${shop.jurisdiction} jurisdiction. Thank you for your business.`,
   ].join("\n");
 }
 
-export function supplierMessage(shop: ShopInfo, day: string, sup: SupplierDay): string {
-  const lines = sup.lines.map((l) => `• ${l.articleCode} (${l.size}) – ${qtyLabel(l.pieces)} (${l.pieces} pcs)`);
+export function compileMessage(shop: ShopInfo, day: string, sup: CompileSupplier): string {
+  const lines = sup.brands.flatMap((b) => [`_${b.brand}_`, ...b.lines.map((l) => `• ${l.articleCode} (${l.size}) – ${l.sets} set${l.sets === 1 ? "" : "s"} = ${l.pieces} pcs`)]);
   return [
-    `*Sold today at ${shop.name}*`,
+    `*Order from ${shop.name}*`,
     `Date: ${formatDate(day)}`,
     ...(shop.gstin ? [`Our GSTIN: ${shop.gstin}`] : []),
     `To: ${sup.supplierName}${sup.supplierGstin ? ` (GSTIN ${sup.supplierGstin})` : ""}`,
     "",
     ...lines,
     "",
-    `*Total: ${qtyLabel(sup.totalPieces)} (${sup.totalPieces} pcs)*`,
-    `Value at your rates: ${formatRs(sup.totalAmount)}`,
+    `*Total: ${sup.totalSets} sets = ${sup.totalPieces} pcs*`,
   ].join("\n");
 }

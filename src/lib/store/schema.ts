@@ -6,6 +6,8 @@ export const TABS = {
   sizes: "ArticleSizes",
   orders: "SupplierOrders",
   orderItems: "SupplierOrderItems",
+  customerOrders: "CustomerOrders",
+  customerOrderItems: "CustomerOrderItems",
   bills: "Bills",
   billItems: "BillItems",
 } as const;
@@ -61,10 +63,25 @@ export const TABLE_DEFS: Record<string, TableDef> = {
       c("amount", "num"), c("sellRate", "num"),
     ],
   },
+  [TABS.customerOrders]: {
+    table: "customer_orders",
+    columns: [
+      c("id"), c("orderNo"), c("createdAt", "ts"), c("createdBy"), c("customerId", "ref"), c("customerName"),
+      c("customerPhone"), c("customerGstin"), c("customerAddress"), c("status"), c("billId", "ref"),
+      c("totalSets", "int"), c("totalPieces", "int"), c("totalAmount", "num"), c("notes"),
+    ],
+  },
+  [TABS.customerOrderItems]: {
+    table: "customer_order_items",
+    columns: [
+      c("id"), c("orderId"), c("sizeId", "ref"), ...ARTICLE, c("sets", "int"), c("pieces", "int"), c("rate", "num"),
+      c("amount", "num"),
+    ],
+  },
   [TABS.bills]: {
     table: "bills",
     columns: [
-      c("id"), c("billNo"), c("createdAt", "ts"), c("createdBy"), c("customerId", "ref"), c("customerName"),
+      c("id"), c("billNo"), c("orderId", "ref"), c("orderNo"), c("gstMode"), c("createdAt", "ts"), c("createdBy"), c("customerId", "ref"), c("customerName"),
       c("customerPhone"), c("customerGstin"), c("customerAddress"), c("totalSets", "int"), c("totalPieces", "int"),
       c("grossAmount", "num"), c("discountAmount", "num"), c("taxableAmount", "num"), c("cgstRate", "num"),
       c("cgstAmount", "num"), c("sgstRate", "num"), c("sgstAmount", "num"), c("roundOff", "num"), c("total", "num"),
@@ -74,7 +91,7 @@ export const TABLE_DEFS: Record<string, TableDef> = {
   [TABS.billItems]: {
     table: "bill_items",
     columns: [
-      c("id"), c("billId"), c("sizeId", "ref"), c("hsn"), ...ARTICLE, c("sets", "int"), c("loosePieces", "int"),
+      c("id"), c("billId"), c("sizeId", "ref"), c("hsn"), ...ARTICLE, c("sets", "int"),
       c("pieces", "int"), c("rate", "num"), c("costRate", "num"), c("grossAmount", "num"), c("discountPct", "num"),
       c("discountAmount", "num"), c("taxableAmount", "num"),
     ],

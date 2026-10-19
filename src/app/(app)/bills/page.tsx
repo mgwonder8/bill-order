@@ -18,7 +18,7 @@ export default async function BillsPage() {
     return (
       <>
         <PageHeader title="Customer bills" />
-        <EmptyState icon={FileText} title="No bills yet" body="Scan the tag of what a customer buys to make a GST bill from your stock." cta={{ href: "/bills/new", label: "Bill a customer" }} />
+        <EmptyState icon={FileText} title="No bills yet" body="Bills are made from customer order forms." cta={{ href: "/customer-orders/new", label: "New order form" }} />
       </>
     );
   }

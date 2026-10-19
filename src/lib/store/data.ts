@@ -5,7 +5,7 @@ import { billMoney, lineMoney, money, num } from "@/lib/money";
 import { newId, nextDocNumber } from "@/lib/ids";
 import { istDay } from "@/lib/dates";
 import { SET_PCS } from "@/lib/sets";
-import type { ArticleSize, Bill, BillItem, Customer, LineBase, Order, OrderItem, StockItem, Supplier, Tag } from "@/lib/types";
+import type { ArticleSize, Bill, BillItem, Customer, CustomerOrder, CustomerOrderItem, GstMode, LineBase, Order, OrderItem, Supplier, Tag } from "@/lib/types";
 
 function toRow(obj: object): TableRow {
   const row: TableRow = {};
@@ -138,10 +138,10 @@ export async function listTags(): Promise<Tag[]> {
   return rows.map((r) => rowToTag(r.data)).reverse();
 }
 
-export async function getTag(id: string): Promise<{ tag: Tag; sizes: StockItem[] } | null> {
+export async function getTag(id: string): Promise<{ tag: Tag; sizes: ArticleSize[] } | null> {
   const row = await findRowById(TABS.tags, id);
   if (!row) return null;
-  const sizes = (await listStock()).filter((z) => z.tagId === id);
+  const sizes = (await listSizes()).filter((z) => z.tagId === id);
   return { tag: rowToTag(row.data), sizes };
 }
 
@@ -238,29 +238,6 @@ export async function saveTag(input: {
   return { tagId, sizes: result };
 }
 
-/** Sets the selling price per piece of one article size range. */
-export async function setSellRate(sizeId: string, sellRate: number): Promise<boolean> {
-  const row = await findRowById(TABS.sizes, sizeId);
-  if (!row) return false;
-  await updateRow(TABS.sizes, row.rowNumber, toRow({ ...rowToSize(row.data), sellRate: money(sellRate) }));
-  return true;
-}
-
-// ---------- Stock: pieces ordered from suppliers minus pieces billed ----------
-
-export async function listStock(): Promise<StockItem[]> {
-  const [sizes, orderItems, billItems] = await Promise.all([listSizes(), readTable(TABS.orderItems), readTable(TABS.billItems)]);
-  const ordered = new Map<string, number>();
-  const sold = new Map<string, number>();
-  for (const r of orderItems.rows) ordered.set(r.data.sizeId, (ordered.get(r.data.sizeId) ?? 0) + num(r.data.pieces));
-  for (const r of billItems.rows) sold.set(r.data.sizeId, (sold.get(r.data.sizeId) ?? 0) + num(r.data.pieces));
-  return sizes.map((z) => {
-    const orderedPieces = ordered.get(z.id) ?? 0;
-    const soldPieces = sold.get(z.id) ?? 0;
-    return { ...z, orderedPieces, soldPieces, inStock: orderedPieces - soldPieces };
-  });
-}
-
 // ---------- Shared line fields ----------
 
 function rowToLine(d: TableRow): LineBase {
@@ -294,7 +271,7 @@ function articleFields(z: ArticleSize) {
   };
 }
 
-// ---------- Supplier orders (stock in) ----------
+// ---------- Supplier orders (purchase orders) ----------
 
 function rowToOrder(d: TableRow): Order {
   return {
@@ -397,7 +374,7 @@ export async function createOrder(input: OrderInput, user: string): Promise<{ or
   return { orderId: id };
 }
 
-/** Replaces a supplier order's lines. Stock follows automatically because it is computed from the lines. */
+/** Replaces a supplier order's lines. */
 export async function updateOrder(id: string, input: OrderInput): Promise<{ orderId: string } | { error: string }> {
   const row = await findRowById(TABS.orders, id);
   if (!row) return { error: "This order no longer exists." };
@@ -413,12 +390,128 @@ export async function updateOrder(id: string, input: OrderInput): Promise<{ orde
   return { orderId: id };
 }
 
-// ---------- Customer bills (stock out) ----------
+// ---------- Customer order forms ----------
+
+function rowToCustomerOrder(d: TableRow): CustomerOrder {
+  return {
+    id: d.id,
+    orderNo: s(d.orderNo),
+    createdAt: s(d.createdAt),
+    createdBy: s(d.createdBy),
+    customerId: s(d.customerId),
+    customerName: s(d.customerName),
+    customerPhone: s(d.customerPhone),
+    customerGstin: s(d.customerGstin),
+    customerAddress: s(d.customerAddress),
+    status: d.status === "billed" ? "billed" : "open",
+    billId: s(d.billId),
+    totalSets: num(d.totalSets),
+    totalPieces: num(d.totalPieces),
+    totalAmount: num(d.totalAmount),
+    notes: s(d.notes),
+  };
+}
+
+function rowToCustomerOrderItem(d: TableRow): CustomerOrderItem {
+  return { ...rowToLine(d), id: d.id, orderId: s(d.orderId), sizeId: s(d.sizeId), amount: num(d.amount) };
+}
+
+export async function listCustomerOrders(): Promise<CustomerOrder[]> {
+  const { rows } = await readTable(TABS.customerOrders);
+  return rows.map((r) => rowToCustomerOrder(r.data)).reverse();
+}
+
+async function listCustomerOrderItems(): Promise<CustomerOrderItem[]> {
+  const { rows } = await readTable(TABS.customerOrderItems);
+  return rows.map((r) => rowToCustomerOrderItem(r.data));
+}
+
+export async function getCustomerOrder(id: string): Promise<{ order: CustomerOrder; items: CustomerOrderItem[] } | null> {
+  const row = await findRowById(TABS.customerOrders, id);
+  if (!row) return null;
+  return { order: rowToCustomerOrder(row.data), items: (await listCustomerOrderItems()).filter((i) => i.orderId === id) };
+}
+
+export type CustomerOrderInput = {
+  customerName: string;
+  customerPhone: string;
+  customerGstin: string;
+  customerAddress: string;
+  notes: string;
+  lines: { sizeId: string; sets: number; pieces: number; rate: number }[];
+};
+
+type ResolvedLines = { error: string } | { items: Omit<CustomerOrderItem, "id" | "orderId">[] };
+
+/** Checks each line against the saved articles and prices it. The price entered becomes the article's selling price. */
+async function resolveCustomerLines(lines: CustomerOrderInput["lines"]): Promise<ResolvedLines> {
+  const { rows } = await readTable(TABS.sizes);
+  const sizes = new Map(rows.map((r) => [r.data.id, { row: r.rowNumber, size: rowToSize(r.data) }]));
+  const items: Omit<CustomerOrderItem, "id" | "orderId">[] = [];
+  for (const l of lines) {
+    const found = sizes.get(l.sizeId);
+    if (!found) return { error: "One of the articles is no longer saved. Scan its tag again." };
+    const pieces = Math.max(0, Math.round(l.pieces));
+    if (pieces <= 0) return { error: `Enter the quantity for ${found.size.articleCode} (${found.size.size}).` };
+    const rate = money(l.rate);
+    items.push({ ...articleFields(found.size), sizeId: l.sizeId, sets: Math.max(0, Math.round(l.sets)), pieces, rate, amount: lineMoney({ pieces, rate }).gross });
+    if (rate > 0 && rate !== found.size.sellRate) {
+      found.size = { ...found.size, sellRate: rate };
+      await updateRow(TABS.sizes, found.row, toRow(found.size));
+    }
+  }
+  if (items.length === 0) return { error: "Add at least one article." };
+  return { items };
+}
+
+/** A sale with no name and no phone is a walk-in: kept on the order, not saved as a customer. */
+async function customerFor(input: { customerName: string; customerPhone: string; customerGstin: string; customerAddress: string }) {
+  const customerName = input.customerName.trim() || WALK_IN;
+  const customer =
+    input.customerPhone.trim() || customerName !== WALK_IN
+      ? await upsertCustomer({ name: customerName, phone: input.customerPhone, gstin: input.customerGstin, address: input.customerAddress })
+      : null;
+  return { customerId: customer?.id ?? "", customerName, customerPhone: input.customerPhone, customerGstin: input.customerGstin, customerAddress: input.customerAddress };
+}
+
+export async function createCustomerOrder(input: CustomerOrderInput, user: string): Promise<{ orderId: string } | { error: string }> {
+  const resolved = await resolveCustomerLines(input.lines);
+  if ("error" in resolved) return resolved;
+  const orderNo = nextDocNumber("CO", (await listCustomerOrders()).map((o) => o.orderNo));
+  const id = newId("cor");
+  await appendRow(
+    TABS.customerOrders,
+    toRow({ id, orderNo, createdAt: new Date().toISOString(), createdBy: user, status: "open", billId: "", notes: input.notes, ...(await customerFor(input)), ...orderTotals(resolved.items) })
+  );
+  await appendRows(TABS.customerOrderItems, resolved.items.map((i) => toRow({ ...i, id: newId("coi"), orderId: id })));
+  return { orderId: id };
+}
+
+/** Replaces an open order's customer and lines. Billed orders are locked so the bill always matches. */
+export async function updateCustomerOrder(id: string, input: CustomerOrderInput): Promise<{ orderId: string } | { error: string }> {
+  const row = await findRowById(TABS.customerOrders, id);
+  if (!row) return { error: "This order no longer exists." };
+  const current = rowToCustomerOrder(row.data);
+  if (current.status === "billed") return { error: "This order is already billed, so it cannot be changed." };
+  const resolved = await resolveCustomerLines(input.lines);
+  if ("error" in resolved) return resolved;
+
+  await updateRow(TABS.customerOrders, row.rowNumber, toRow({ ...current, notes: input.notes, ...(await customerFor(input)), ...orderTotals(resolved.items) }));
+  const { rows } = await readTable(TABS.customerOrderItems);
+  for (const r of rows.filter((r) => r.data.orderId === id)) await clearRow(TABS.customerOrderItems, r.rowNumber);
+  await appendRows(TABS.customerOrderItems, resolved.items.map((i) => toRow({ ...i, id: newId("coi"), orderId: id })));
+  return { orderId: id };
+}
+
+// ---------- Customer bills ----------
 
 function rowToBill(d: TableRow): Bill {
   return {
     id: d.id,
     billNo: s(d.billNo),
+    orderId: s(d.orderId),
+    orderNo: s(d.orderNo),
+    gstMode: d.gstMode === "without" ? "without" : "with",
     createdAt: s(d.createdAt),
     createdBy: s(d.createdBy),
     customerId: s(d.customerId),
@@ -447,7 +540,6 @@ function rowToBillItem(d: TableRow): BillItem {
     id: d.id,
     billId: s(d.billId),
     sizeId: s(d.sizeId),
-    loosePieces: num(d.loosePieces),
     costRate: num(d.costRate),
     hsn: s(d.hsn),
     grossAmount: num(d.grossAmount),
@@ -474,49 +566,42 @@ export async function getBill(id: string): Promise<{ bill: Bill; items: BillItem
 }
 
 export type BillInput = {
-  customerName: string;
-  customerPhone: string;
-  customerGstin: string;
-  customerAddress: string;
-  notes: string;
+  orderId: string;
+  gstMode: GstMode;
   hsn: string;
-  lines: { sizeId: string; sets: number; loosePieces: number; rate: number; discountPct: number }[];
+  notes: string;
+  discounts: Record<string, number>;
 };
 
-/** Makes a customer bill from stock. Selling more than is in stock is allowed; the screen warns first. */
-export async function createBill(input: BillInput, user: string): Promise<{ billId: string } | { error: string }> {
-  const sizes = new Map((await listSizes()).map((z) => [z.id, z]));
-  const lines = [];
-  for (const l of input.lines) {
-    const z = sizes.get(l.sizeId);
-    if (!z) return { error: "One of the articles is no longer saved." };
-    const sets = Math.max(0, Math.round(l.sets));
-    const loosePieces = Math.max(0, Math.round(l.loosePieces));
-    const pieces = sets * SET_PCS + loosePieces;
-    if (pieces <= 0) return { error: `Enter a quantity for ${z.articleCode} (${z.size}).` };
-    lines.push({ z, sets, loosePieces, pieces, rate: money(l.rate), discountPct: Math.min(100, Math.max(0, num(l.discountPct))) });
-  }
-  if (lines.length === 0) return { error: "Add at least one item." };
+/** Turns a customer order form into a bill (with or without GST) and marks the order billed. */
+export async function billCustomerOrder(input: BillInput, user: string): Promise<{ billId: string } | { error: string }> {
+  const found = await getCustomerOrder(input.orderId);
+  if (!found) return { error: "This order no longer exists." };
+  if (found.order.status === "billed") return { error: "This order has already been billed." };
+  if (found.items.length === 0) return { error: "This order has no items." };
 
-  // A quick sale with no name and no phone is a walk-in: billed, but not saved as a customer.
-  const customerName = input.customerName.trim() || WALK_IN;
-  const customer = input.customerPhone.trim() || customerName !== WALK_IN ? await upsertCustomer({ name: customerName, phone: input.customerPhone, gstin: input.customerGstin, address: input.customerAddress }) : null;
-  const totals = billMoney(lines);
+  const sizes = new Map((await listSizes()).map((z) => [z.id, z]));
+  const lines = found.items.map((i) => ({ ...i, discountPct: Math.min(100, Math.max(0, num(input.discounts[i.id]))) }));
+  const totals = billMoney(lines, input.gstMode);
   const billNo = nextDocNumber("INV", (await listBills()).map((b) => b.billNo));
   const billId = newId("bil");
+  const o = found.order;
 
   await appendRow(
     TABS.bills,
     toRow({
       id: billId,
       billNo,
+      orderId: o.id,
+      orderNo: o.orderNo,
+      gstMode: input.gstMode,
       createdAt: new Date().toISOString(),
       createdBy: user,
-      customerId: customer?.id ?? "",
-      customerName,
-      customerPhone: input.customerPhone,
-      customerGstin: input.customerGstin,
-      customerAddress: input.customerAddress,
+      customerId: o.customerId,
+      customerName: o.customerName,
+      customerPhone: o.customerPhone,
+      customerGstin: o.customerGstin,
+      customerAddress: o.customerAddress,
       notes: input.notes,
       ...totals,
     } satisfies Bill)
@@ -527,16 +612,23 @@ export async function createBill(input: BillInput, user: string): Promise<{ bill
     lines.map((l) => {
       const m = lineMoney(l);
       return toRow({
-        ...articleFields(l.z),
+        articleCode: l.articleCode,
+        brand: l.brand,
+        fabric: l.fabric,
+        supplierName: l.supplierName,
+        supplierGstin: l.supplierGstin,
+        supplierPhone: l.supplierPhone,
+        size: l.size,
+        sizes: l.sizes,
+        pcsPerSet: l.pcsPerSet,
         id: newId("bli"),
         billId,
-        sizeId: l.z.id,
+        sizeId: l.sizeId,
         hsn: input.hsn,
         sets: l.sets,
-        loosePieces: l.loosePieces,
         pieces: l.pieces,
         rate: l.rate,
-        costRate: l.z.rate,
+        costRate: sizes.get(l.sizeId)?.rate ?? 0,
         grossAmount: m.gross,
         discountPct: l.discountPct,
         discountAmount: m.discountAmount,
@@ -544,67 +636,128 @@ export async function createBill(input: BillInput, user: string): Promise<{ bill
       } satisfies BillItem);
     })
   );
+
+  const orderRow = await findRowById(TABS.customerOrders, o.id);
+  if (orderRow) await updateRow(TABS.customerOrders, orderRow.rowNumber, toRow({ ...o, status: "billed", billId }));
   return { billId };
 }
 
-// ---------- Daily supplier report ----------
+// ---------- Daily compile: what customers ordered, to order from each supplier ----------
 
-export type SupplierLine = {
+export type CompileSource = { kind: "order" | "bill"; id: string; no: string; customerName: string; sets: number; pieces: number };
+
+export type CompileLine = {
+  sizeId: string;
   articleCode: string;
   brand: string;
   fabric: string;
   size: string;
   sizes: string;
   rate: number;
+  sets: number;
   pieces: number;
   amount: number;
+  sources: CompileSource[];
 };
 
-export type SupplierDay = {
+export type CompileBrand = { brand: string; lines: CompileLine[]; totalSets: number; totalPieces: number };
+
+export type CompileSupplier = {
   supplierName: string;
   supplierGstin: string;
   supplierPhone: string;
-  lines: SupplierLine[];
+  brands: CompileBrand[];
+  totalSets: number;
   totalPieces: number;
   totalAmount: number;
-  billNos: string[];
+  orderNos: string[];
 };
 
-/** Everything billed on one day (Indian time), grouped by supplier, valued at the supplier's rate. */
-export async function supplierDay(day: string): Promise<{ suppliers: SupplierDay[]; billCount: number }> {
-  const bills = (await listBills()).filter((b) => istDay(b.createdAt) === day);
-  const billNo = new Map(bills.map((b) => [b.id, b.billNo]));
-  const items = (await listBillItems()).filter((i) => billNo.has(i.billId));
+export type CompileOrder = {
+  kind: "order" | "bill";
+  id: string;
+  no: string;
+  customerName: string;
+  createdAt: string;
+  billed: boolean;
+  totalSets: number;
+  totalPieces: number;
+  lines: { articleCode: string; brand: string; size: string; supplierName: string; sets: number; pieces: number }[];
+};
 
-  const bySupplier = new Map<string, SupplierDay>();
-  for (const i of items) {
-    const key = norm(i.supplierName || "Unknown supplier");
-    let sup = bySupplier.get(key);
-    if (!sup) {
-      sup = { supplierName: i.supplierName || "Unknown supplier", supplierGstin: i.supplierGstin, supplierPhone: i.supplierPhone, lines: [], totalPieces: 0, totalAmount: 0, billNos: [] };
-      bySupplier.set(key, sup);
-    }
-    sup.supplierGstin ||= i.supplierGstin;
-    sup.supplierPhone ||= i.supplierPhone;
-    const no = billNo.get(i.billId) ?? "";
-    if (no && !sup.billNos.includes(no)) sup.billNos.push(no);
+type DayLine = LineBase & { sizeId: string };
 
-    const amount = money(i.pieces * i.costRate);
-    let line = sup.lines.find((l) => l.articleCode === i.articleCode && l.size === i.size && l.rate === i.costRate);
-    if (!line) {
-      line = { articleCode: i.articleCode, brand: i.brand, fabric: i.fabric, size: i.size, sizes: i.sizes, rate: i.costRate, pieces: 0, amount: 0 };
-      sup.lines.push(line);
+/**
+ * Everything customers ordered on one day (Indian time), grouped supplier, then brand, then article
+ * and size chart, valued at the supplier's rate. Bills with no order form behind them count too.
+ */
+export async function compileDay(day: string): Promise<{ suppliers: CompileSupplier[]; orders: CompileOrder[] }> {
+  const [orders, orderItems, bills, billItems, sizeList] = await Promise.all([listCustomerOrders(), listCustomerOrderItems(), listBills(), listBillItems(), listSizes()]);
+  const sizes = new Map(sizeList.map((z) => [z.id, z]));
+
+  const sources: { src: Omit<CompileOrder, "lines" | "totalSets" | "totalPieces">; items: DayLine[] }[] = [];
+  for (const o of orders.filter((o) => istDay(o.createdAt) === day)) {
+    sources.push({
+      src: { kind: "order", id: o.id, no: o.orderNo, customerName: o.customerName, createdAt: o.createdAt, billed: o.status === "billed" },
+      items: orderItems.filter((i) => i.orderId === o.id),
+    });
+  }
+  for (const b of bills.filter((b) => !b.orderId && istDay(b.createdAt) === day)) {
+    sources.push({
+      src: { kind: "bill", id: b.id, no: b.billNo, customerName: b.customerName, createdAt: b.createdAt, billed: true },
+      items: billItems.filter((i) => i.billId === b.id),
+    });
+  }
+
+  const bySupplier = new Map<string, CompileSupplier>();
+  const compiled: CompileOrder[] = [];
+  for (const { src, items } of sources) {
+    const order: CompileOrder = { ...src, totalSets: 0, totalPieces: 0, lines: [] };
+    for (const i of items) {
+      const supplierName = i.supplierName || UNKNOWN_SUPPLIER;
+      order.lines.push({ articleCode: i.articleCode, brand: i.brand, size: i.size, supplierName, sets: i.sets, pieces: i.pieces });
+      order.totalSets += i.sets;
+      order.totalPieces += i.pieces;
+
+      let sup = bySupplier.get(norm(supplierName));
+      if (!sup) {
+        sup = { supplierName, supplierGstin: i.supplierGstin, supplierPhone: i.supplierPhone, brands: [], totalSets: 0, totalPieces: 0, totalAmount: 0, orderNos: [] };
+        bySupplier.set(norm(supplierName), sup);
+      }
+      sup.supplierGstin ||= i.supplierGstin;
+      sup.supplierPhone ||= i.supplierPhone;
+      if (!sup.orderNos.includes(src.no)) sup.orderNos.push(src.no);
+
+      const brandName = i.brand || "No brand";
+      let brand = sup.brands.find((b) => same(b.brand, brandName));
+      if (!brand) {
+        brand = { brand: brandName, lines: [], totalSets: 0, totalPieces: 0 };
+        sup.brands.push(brand);
+      }
+      let line = brand.lines.find((l) => same(l.articleCode, i.articleCode) && l.size === i.size);
+      if (!line) {
+        line = { sizeId: i.sizeId, articleCode: i.articleCode, brand: brandName, fabric: i.fabric, size: i.size, sizes: i.sizes, rate: sizes.get(i.sizeId)?.rate ?? 0, sets: 0, pieces: 0, amount: 0, sources: [] };
+        brand.lines.push(line);
+      }
+      line.sets += i.sets;
+      line.pieces += i.pieces;
+      line.amount = money(line.pieces * line.rate);
+      line.sources.push({ kind: src.kind, id: src.id, no: src.no, customerName: src.customerName, sets: i.sets, pieces: i.pieces });
+      brand.totalSets += i.sets;
+      brand.totalPieces += i.pieces;
+      sup.totalSets += i.sets;
+      sup.totalPieces += i.pieces;
     }
-    line.pieces += i.pieces;
-    line.amount = money(line.amount + amount);
-    sup.totalPieces += i.pieces;
-    sup.totalAmount = money(sup.totalAmount + amount);
+    compiled.push(order);
   }
 
   const suppliers = [...bySupplier.values()].sort((a, b) => a.supplierName.localeCompare(b.supplierName));
   for (const sup of suppliers) {
-    sup.lines.sort((a, b) => a.articleCode.localeCompare(b.articleCode) || a.size.localeCompare(b.size));
-    sup.billNos.sort();
+    sup.brands.sort((a, b) => a.brand.localeCompare(b.brand));
+    for (const b of sup.brands) b.lines.sort((x, y) => x.articleCode.localeCompare(y.articleCode) || x.size.localeCompare(y.size));
+    sup.totalAmount = money(sup.brands.reduce((t, b) => t + b.lines.reduce((u, l) => u + l.amount, 0), 0));
+    sup.orderNos.sort();
   }
-  return { suppliers, billCount: bills.length };
+  compiled.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  return { suppliers, orders: compiled };
 }

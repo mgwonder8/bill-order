@@ -12,5 +12,6 @@ export const shop: ShopInfo = {
   phone: process.env.SHOP_PHONE || "",
   email: process.env.SHOP_EMAIL || "",
   state: process.env.SHOP_STATE || "Tamil Nadu",
+  jurisdiction: process.env.SHOP_JURISDICTION || "Jalna",
   bank: process.env.SHOP_BANK || "",
 };

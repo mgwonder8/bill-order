@@ -2,31 +2,35 @@
 
 import { useState } from "react";
 import { Download, Loader2, MessageCircle, Printer, Share2 } from "lucide-react";
-import { billPdf, orderPdf, supplierPdf } from "@/lib/pdf";
-import { billMessage, orderMessage, supplierMessage } from "@/lib/messages";
+import { billPdf, compilePdf, customerOrderPdf, orderPdf } from "@/lib/pdf";
+import { billMessage, compileMessage, customerOrderMessage, orderMessage } from "@/lib/messages";
 import { downloadBlob, sharePdf, whatsappUrl } from "@/lib/share";
-import type { Bill, BillItem, Order, OrderItem, ShopInfo } from "@/lib/types";
-import type { SupplierDay } from "@/lib/store/data";
+import type { Bill, BillItem, CustomerOrder, CustomerOrderItem, Order, OrderItem, ShopInfo } from "@/lib/types";
+import type { CompileSupplier } from "@/lib/store/data";
 
 export type Doc =
   | { kind: "order"; order: Order; items: OrderItem[] }
+  | { kind: "customerOrder"; order: CustomerOrder; items: CustomerOrderItem[] }
   | { kind: "bill"; bill: Bill; items: BillItem[] }
-  | { kind: "supplier"; day: string; suppliers: SupplierDay[]; compiledAt: string };
+  | { kind: "compile"; day: string; suppliers: CompileSupplier[]; compiledAt: string };
 
 async function build(shop: ShopInfo, doc: Doc) {
   if (doc.kind === "order") return orderPdf(shop, doc.order, doc.items);
+  if (doc.kind === "customerOrder") return customerOrderPdf(shop, doc.order, doc.items);
   if (doc.kind === "bill") return billPdf(shop, doc.bill, doc.items);
-  return supplierPdf(shop, doc.day, doc.suppliers, doc.compiledAt);
+  return compilePdf(shop, doc.day, doc.suppliers, doc.compiledAt);
 }
 
 function message(shop: ShopInfo, doc: Doc): string {
   if (doc.kind === "order") return orderMessage(shop, doc.order, doc.items);
+  if (doc.kind === "customerOrder") return customerOrderMessage(shop, doc.order, doc.items);
   if (doc.kind === "bill") return billMessage(shop, doc.bill, doc.items);
-  return doc.suppliers.map((s) => supplierMessage(shop, doc.day, s)).join("\n\n――――――\n\n");
+  return doc.suppliers.map((s) => compileMessage(shop, doc.day, s)).join("\n\n――――――\n\n");
 }
 
 function phoneOf(doc: Doc): string {
   if (doc.kind === "order") return doc.order.supplierPhone;
+  if (doc.kind === "customerOrder") return doc.order.customerPhone;
   if (doc.kind === "bill") return doc.bill.customerPhone;
   return doc.suppliers.length === 1 ? doc.suppliers[0].supplierPhone : "";
 }

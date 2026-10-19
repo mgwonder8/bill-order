@@ -5,7 +5,6 @@ import { getBill } from "@/lib/store/data";
 import { formatINR } from "@/lib/money";
 import { formatDate, formatDateTime, formatTime } from "@/lib/dates";
 import { amountInWords } from "@/lib/words";
-import { lineQtyLabel, qtyLabel } from "@/lib/sets";
 import { shop } from "@/lib/shop";
 import { Card, PageHeader } from "@/components/ui";
 import { DocActions } from "@/components/doc-actions";
@@ -19,6 +18,7 @@ export default async function BillPage({ params, searchParams }: PageProps<"/bil
   const found = await getBill(id);
   if (!found) notFound();
   const { bill, items } = found;
+  const withGst = bill.gstMode === "with";
 
   return (
     <>
@@ -36,13 +36,14 @@ export default async function BillPage({ params, searchParams }: PageProps<"/bil
           <p className="text-sm font-semibold text-muted">Grand total</p>
           <p className="text-3xl font-extrabold tracking-tight tnum">{formatINR(bill.total)}</p>
           <p className="text-sm text-muted tnum">
-            {bill.totalPieces} pcs ({qtyLabel(bill.totalPieces)}) · GST {formatINR(bill.cgstAmount + bill.sgstAmount)}
+            {bill.totalSets} sets · {bill.totalPieces} pcs · {withGst ? `GST ${formatINR(bill.cgstAmount + bill.sgstAmount)}` : "Without GST"}
           </p>
         </div>
         <DocActions shop={shop} doc={{ kind: "bill", bill, items }} print />
       </Card>
 
       <article className="print-sheet card mx-auto max-w-4xl p-5 md:p-8">
+        <p className="mb-4 text-center text-xs font-bold uppercase tracking-[0.16em] text-muted">Subject to {shop.jurisdiction} jurisdiction</p>
         <header className="flex flex-wrap items-start justify-between gap-4 border-b border-line pb-5">
           <div className="min-w-0">
             <h2 className="text-lg font-extrabold tracking-tight">{shop.name}</h2>
@@ -51,11 +52,12 @@ export default async function BillPage({ params, searchParams }: PageProps<"/bil
             {(shop.phone || shop.email) && <p className="text-sm text-muted">{[shop.phone, shop.email].filter(Boolean).join(" · ")}</p>}
           </div>
           <div className="text-right">
-            <p className="text-xs font-bold uppercase tracking-[0.14em] text-accent">Tax invoice</p>
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-accent">{withGst ? "Tax invoice" : "Bill"}</p>
             <p className="mt-1 text-lg font-extrabold tnum">{bill.billNo}</p>
             <p className="text-sm text-muted tnum">
               {formatDate(bill.createdAt)} · {formatTime(bill.createdAt)}
             </p>
+            {bill.orderNo && <p className="text-xs text-muted tnum">Order {bill.orderNo}</p>}
           </div>
         </header>
 
@@ -80,8 +82,8 @@ export default async function BillPage({ params, searchParams }: PageProps<"/bil
               <tr className="border-b border-line text-left text-xs font-bold uppercase tracking-wide text-muted">
                 <th className="pb-2">Article</th>
                 <th className="pb-2">HSN</th>
-                <th className="pb-2">Size set</th>
-                <th className="pb-2 text-right">Qty</th>
+                <th className="pb-2">Size chart</th>
+                <th className="pb-2 text-right">Sets</th>
                 <th className="pb-2 text-right">Pcs</th>
                 <th className="pb-2 text-right">Rate</th>
                 <th className="pb-2 text-right">Amount</th>
@@ -98,7 +100,7 @@ export default async function BillPage({ params, searchParams }: PageProps<"/bil
                   </td>
                   <td className="py-2.5 text-muted tnum">{i.hsn}</td>
                   <td className="py-2.5">{i.size}</td>
-                  <td className="py-2.5 text-right font-bold whitespace-nowrap tnum">{lineQtyLabel(i.sets, i.loosePieces)}</td>
+                  <td className="py-2.5 text-right font-bold tnum">{i.sets}</td>
                   <td className="py-2.5 text-right tnum">{i.pieces}</td>
                   <td className="py-2.5 text-right tnum">{formatINR(i.rate)}</td>
                   <td className="py-2.5 text-right tnum">{formatINR(i.grossAmount)}</td>
@@ -129,8 +131,14 @@ export default async function BillPage({ params, searchParams }: PageProps<"/bil
             <Row label="Amount" value={formatINR(bill.grossAmount)} />
             {bill.discountAmount > 0 && <Row label="Less discount" value={`− ${formatINR(bill.discountAmount)}`} />}
             <Row label="Taxable value" value={formatINR(bill.taxableAmount)} />
-            <Row label={`CGST ${bill.cgstRate}%`} value={formatINR(bill.cgstAmount)} />
-            <Row label={`SGST ${bill.sgstRate}%`} value={formatINR(bill.sgstAmount)} />
+            {withGst ? (
+              <>
+                <Row label={`CGST ${bill.cgstRate}%`} value={formatINR(bill.cgstAmount)} />
+                <Row label={`SGST ${bill.sgstRate}%`} value={formatINR(bill.sgstAmount)} />
+              </>
+            ) : (
+              <Row label="GST" value="Not charged" />
+            )}
             {bill.roundOff !== 0 && <Row label="Round off" value={formatINR(bill.roundOff)} />}
             <div className="flex items-center justify-between rounded-xl bg-accent-soft px-3 py-2.5 text-lg font-extrabold text-accent">
               <dt>Grand total</dt>

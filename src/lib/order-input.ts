@@ -15,22 +15,32 @@ export const OrderBody = z.object({
     .min(1, "Scan a tag to add at least one item"),
 });
 
-export const BillBody = z.object({
+const customer = {
   customerName: z.string().trim().default(""),
   customerPhone: z.string().trim().default(""),
   customerGstin: z.string().trim().toUpperCase().default(""),
   customerAddress: z.string().trim().default(""),
+};
+
+export const CustomerOrderBody = z.object({
+  ...customer,
   notes: z.string().trim().default(""),
-  hsn: z.string().trim().default(""),
   lines: z
     .array(
       z.object({
         sizeId: z.string().trim().min(1),
-        sets: z.coerce.number().int().min(0).max(9999),
-        loosePieces: z.coerce.number().int().min(0).max(99999),
+        sets: z.coerce.number().int().min(0).max(99999),
+        pieces: z.coerce.number().int().min(1, "Every item needs a quantity").max(999999),
         rate: z.coerce.number().min(0),
-        discountPct: z.coerce.number().min(0).max(100).default(0),
       })
     )
-    .min(1, "Add at least one item"),
+    .min(1, "Scan a tag to add at least one article"),
+});
+
+export const BillBody = z.object({
+  orderId: z.string().trim().min(1),
+  gstMode: z.enum(["with", "without"]).default("with"),
+  hsn: z.string().trim().default(""),
+  notes: z.string().trim().default(""),
+  discounts: z.record(z.string(), z.coerce.number().min(0).max(100)).default({}),
 });

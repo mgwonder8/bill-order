@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { ArrowLeft } from "lucide-react";
 
-export const STEP_NAMES = ["Order from supplier", "Bill a customer", "Supplier report"] as const;
+export const STEP_NAMES = ["Customer order form", "Bill", "Supplier compile"] as const;
 
 export function PageHeader({
   title,

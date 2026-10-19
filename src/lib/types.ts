@@ -82,9 +82,6 @@ export type ArticleSize = {
   sellRate: number;
 };
 
-/** An article size with its live stock: pieces ordered from the supplier minus pieces billed. */
-export type StockItem = ArticleSize & { orderedPieces: number; soldPieces: number; inStock: number };
-
 /** Article fields every order and bill line carries, copied at the time so later edits do not rewrite history. */
 export type LineBase = {
   articleCode: string;
@@ -101,7 +98,7 @@ export type LineBase = {
   rate: number;
 };
 
-/** A supplier order (purchase order). Saving it adds its pieces to stock. */
+/** A supplier order (purchase order), usually made from the day's compiled customer orders. */
 export type Order = {
   id: string;
   orderNo: string;
@@ -127,10 +124,43 @@ export type OrderItem = LineBase & {
   sellRate: number;
 };
 
-/** A customer bill (GST tax invoice), made from stock. */
+/** An order form taken from a customer. It can be billed on the spot or later. */
+export type CustomerOrder = {
+  id: string;
+  orderNo: string;
+  createdAt: string;
+  createdBy: string;
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  customerGstin: string;
+  customerAddress: string;
+  status: "open" | "billed";
+  billId: string;
+  totalSets: number;
+  totalPieces: number;
+  totalAmount: number;
+  notes: string;
+};
+
+/** `rate` is the selling price per piece; `pieces` is editable and defaults to sets x pieces per set. */
+export type CustomerOrderItem = LineBase & {
+  id: string;
+  orderId: string;
+  sizeId: string;
+  amount: number;
+};
+
+/** with = 5% GST added on top (CGST + SGST); without = plain bill, no GST. */
+export type GstMode = "with" | "without";
+
+/** A customer bill, made from a customer order form. */
 export type Bill = {
   id: string;
   billNo: string;
+  orderId: string;
+  orderNo: string;
+  gstMode: GstMode;
   createdAt: string;
   createdBy: string;
   customerId: string;
@@ -152,15 +182,11 @@ export type Bill = {
   notes: string;
 };
 
-/**
- * `sets` full sets plus `loosePieces`; `pieces` is the total. `rate` is the selling price
- * per piece, `costRate` the supplier's rate (kept for the daily supplier report).
- */
+/** `rate` is the selling price per piece, `costRate` the supplier's rate. */
 export type BillItem = LineBase & {
   id: string;
   billId: string;
   sizeId: string;
-  loosePieces: number;
   costRate: number;
   hsn: string;
   grossAmount: number;
@@ -177,5 +203,7 @@ export type ShopInfo = {
   phone: string;
   email: string;
   state: string;
+  /** Town printed as "Subject to ... jurisdiction" at the top of bills. */
+  jurisdiction: string;
   bank: string;
 };

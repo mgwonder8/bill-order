@@ -1,11 +1,10 @@
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, Boxes, ChevronRight, IndianRupee, Layers, PackagePlus, Receipt, Truck } from "lucide-react";
+import { ArrowRight, ChevronRight, ClipboardList, IndianRupee, Layers, PackagePlus, ScanLine } from "lucide-react";
 import { requireUser } from "@/lib/session";
-import { listBills, listStock } from "@/lib/store/data";
+import { listBills, listCustomerOrders } from "@/lib/store/data";
 import { formatINR } from "@/lib/money";
 import { formatDateTime, istDay } from "@/lib/dates";
-import { SET_PCS, qtyLabel } from "@/lib/sets";
-import { Card, SectionTitle, Stat } from "@/components/ui";
+import { Card, Pill, SectionTitle, Stat } from "@/components/ui";
 
 export const metadata = { title: "Home" };
 
@@ -16,16 +15,15 @@ function greeting(now: Date) {
 
 export default async function HomePage() {
   const user = await requireUser();
-  const [bills, stock] = await Promise.all([listBills(), listStock()]);
+  const [orders, bills] = await Promise.all([listCustomerOrders(), listBills()]);
 
   const now = new Date();
   const today = istDay();
+  const todayOrders = orders.filter((o) => istDay(o.createdAt) === today);
   const todayBills = bills.filter((b) => istDay(b.createdAt) === today);
+  const todaySets = todayOrders.reduce((s, o) => s + o.totalSets, 0);
   const todaySales = todayBills.reduce((s, b) => s + b.total, 0);
-  const todayPcs = todayBills.reduce((s, b) => s + b.totalPieces, 0);
-  const inStock = stock.reduce((s, z) => s + Math.max(0, z.inStock), 0);
-  const low = stock.filter((z) => z.inStock < SET_PCS).sort((a, b) => a.inStock - b.inStock);
-
+  const open = orders.filter((o) => o.status === "open");
 
   return (
     <>
@@ -38,40 +36,40 @@ export default async function HomePage() {
 
       <div className="grid gap-3 sm:grid-cols-2">
         <Link
-          href="/bills/new"
+          href="/customer-orders/new"
           className="group relative overflow-hidden rounded-[1.4rem] bg-gradient-to-br from-[#5b52ee] via-[#4f46e5] to-[#3730a3] p-5 text-white shadow-lg shadow-indigo-900/15"
         >
           <span className="pointer-events-none absolute -top-16 -right-10 h-44 w-44 rounded-full bg-white/10" />
           <div className="relative flex items-center gap-4">
             <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white/15 ring-1 ring-white/25">
-              <Receipt size={26} />
+              <ScanLine size={26} />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-xl font-extrabold tracking-tight">Bill a customer</p>
-              <p className="mt-0.5 text-sm text-white/75">Scan the tag. GST bill from your stock.</p>
+              <p className="text-xl font-extrabold tracking-tight">Customer order form</p>
+              <p className="mt-0.5 text-sm text-white/75">Scan tags, tick, save or bill.</p>
             </div>
             <ArrowRight className="shrink-0 transition-transform group-hover:translate-x-0.5" size={22} />
           </div>
         </Link>
-        <Link href="/orders/new" className="card group flex items-center gap-4 p-5 transition-colors hover:border-accent">
+        <Link href={`/compile`} className="card group flex items-center gap-4 p-5 transition-colors hover:border-accent">
           <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-accent-soft text-accent">
-            <PackagePlus size={26} />
+            <Layers size={26} />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-xl font-extrabold tracking-tight">Order from supplier</p>
-            <p className="mt-0.5 text-sm text-muted">Scan their tag. Stock is added.</p>
+            <p className="text-xl font-extrabold tracking-tight">Today&apos;s compile</p>
+            <p className="mt-0.5 text-sm text-muted">{todaySets ? `${todaySets} sets to order from suppliers` : "What to order from each supplier"}</p>
           </div>
           <ArrowRight className="shrink-0 text-accent transition-transform group-hover:translate-x-0.5" size={22} />
         </Link>
       </div>
 
-      <Link href="/supplier" className="card mt-3 flex items-center gap-3 p-4 transition-colors hover:border-accent">
+      <Link href="/orders/new" className="card mt-3 flex items-center gap-3 p-4 transition-colors hover:border-accent">
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent">
-          <Truck size={19} />
+          <PackagePlus size={19} />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block font-bold">Supplier report</span>
-          <span className="block truncate text-sm text-muted">What you sold today from each supplier, ready to send</span>
+          <span className="block font-bold">Order from supplier</span>
+          <span className="block truncate text-sm text-muted">Make a purchase order and send it on WhatsApp</span>
         </span>
         <ChevronRight size={18} className="text-muted" />
       </Link>
@@ -79,32 +77,30 @@ export default async function HomePage() {
       <h2 className="mt-7 mb-3 text-base font-bold">Today</h2>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <div className="col-span-2 lg:col-span-1">
-          <Stat icon={IndianRupee} label="Sales" value={formatINR(todaySales)} hint={`${todayBills.length} bill${todayBills.length === 1 ? "" : "s"}`} />
+          <Stat icon={IndianRupee} label="Billed" value={formatINR(todaySales)} hint={`${todayBills.length} bill${todayBills.length === 1 ? "" : "s"}`} />
         </div>
-        <Stat icon={Layers} label="Sold" value={qtyLabel(todayPcs)} hint={`${todayPcs} pieces`} />
-        <Stat icon={Boxes} label="In stock" value={qtyLabel(inStock)} hint={low.length ? `${low.length} running low` : "all well stocked"} />
+        <Stat icon={ClipboardList} label="Orders taken" value={String(todayOrders.length)} hint={`${open.length} not billed`} />
+        <Stat icon={Layers} label="Sets ordered" value={`${todaySets}`} hint={`${todayOrders.reduce((s, o) => s + o.totalPieces, 0)} pieces`} />
       </div>
 
       <div className="mt-7 grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section>
-          <SectionTitle action={<Link href="/stock" className="text-sm font-bold text-accent">Stock</Link>}>Running low</SectionTitle>
+          <SectionTitle action={<Link href="/customer-orders?show=open" className="text-sm font-bold text-accent">See all</Link>}>Not billed yet</SectionTitle>
           <Card>
-            {low.length === 0 ? (
-              <p className="px-5 py-8 text-center text-sm text-muted">{stock.length ? "Every item has at least one set in stock." : "Order from a supplier to build your stock."}</p>
+            {open.length === 0 ? (
+              <p className="px-5 py-8 text-center text-sm text-muted">Every order is billed.</p>
             ) : (
               <ul className="divide-y divide-line">
-                {low.slice(0, 5).map((z) => (
-                  <li key={z.id} className="flex items-center gap-3 px-4 py-3">
-                    <AlertTriangle size={18} className={z.inStock <= 0 ? "text-danger" : "text-warn"} />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-bold">
-                        {z.articleCode} <span className="text-accent">· {z.size}</span>
+                {open.slice(0, 5).map((o) => (
+                  <li key={o.id} className="flex items-center gap-3 px-4 py-3">
+                    <Link href={`/customer-orders/${o.id}`} className="min-w-0 flex-1">
+                      <p className="truncate font-bold">{o.customerName}</p>
+                      <p className="truncate text-sm text-muted tnum">
+                        {o.orderNo} · {o.totalSets} sets · {formatINR(o.totalAmount)}
                       </p>
-                      <p className="truncate text-sm text-muted">{z.supplierName}</p>
-                    </div>
-                    <span className={`text-sm font-bold whitespace-nowrap ${z.inStock <= 0 ? "text-danger" : "text-warn"}`}>{z.inStock <= 0 ? "Out" : qtyLabel(z.inStock)}</span>
-                    <Link href={`/orders/new?tag=${z.tagId}`} className="btn btn-soft btn-sm">
-                      Reorder
+                    </Link>
+                    <Link href={`/bills/new?order=${o.id}`} className="btn btn-soft btn-sm">
+                      Bill
                     </Link>
                   </li>
                 ))}
@@ -129,8 +125,8 @@ export default async function HomePage() {
                           {b.billNo} · {formatDateTime(b.createdAt)}
                         </p>
                       </div>
+                      {b.gstMode === "without" && <Pill tone="muted">No GST</Pill>}
                       <span className="font-extrabold tnum">{formatINR(b.total)}</span>
-                      <ChevronRight size={18} className="text-muted" />
                     </Link>
                   </li>
                 ))}

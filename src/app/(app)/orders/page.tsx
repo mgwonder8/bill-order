@@ -15,7 +15,7 @@ export default async function OrdersPage() {
   const header = (
     <PageHeader
       title="Supplier orders"
-      subtitle={orders.length ? `${orders.length} order${orders.length === 1 ? "" : "s"} · stock is added when an order is saved` : undefined}
+      subtitle={orders.length ? `${orders.length} order${orders.length === 1 ? "" : "s"}` : undefined}
       action={
         <Link href="/orders/new" className="btn btn-primary">
           <Camera size={18} /> New order
@@ -28,7 +28,7 @@ export default async function OrdersPage() {
     return (
       <>
         {header}
-        <EmptyState icon={ClipboardList} title="No supplier orders yet" body="Scan a supplier's tag to order sets. Saving the order adds the stock." cta={{ href: "/orders/new", label: "Scan a tag" }} />
+        <EmptyState icon={ClipboardList} title="No supplier orders yet" body="Make one from the daily compile, or scan a supplier's tag." cta={{ href: "/orders/new", label: "Scan a tag" }} />
       </>
     );
   }

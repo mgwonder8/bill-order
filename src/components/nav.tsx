@@ -3,27 +3,27 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Boxes, ClipboardList, FileText, Home, PackagePlus, Plus, Receipt, Tags, Truck, X } from "lucide-react";
+import { ClipboardList, FileText, Home, Layers, PackagePlus, Plus, ScanLine, Tags, Truck, X } from "lucide-react";
 
 const LINKS = [
   { href: "/", label: "Home", icon: Home },
-  { href: "/orders", label: "Supplier orders", short: "Orders", icon: ClipboardList },
-  { href: "/bills", label: "Customer bills", short: "Bills", icon: FileText },
-  { href: "/stock", label: "Stock", icon: Boxes },
-  { href: "/supplier", label: "Supplier report", icon: Truck },
+  { href: "/customer-orders", label: "Customer orders", short: "Orders", icon: ClipboardList },
+  { href: "/bills", label: "Bills", icon: FileText },
+  { href: "/compile", label: "Supplier compile", short: "Compile", icon: Layers },
+  { href: "/orders", label: "Supplier orders", icon: Truck },
   { href: "/tags", label: "Saved tags", icon: Tags },
 ];
 
 const ACTIONS = [
-  { href: "/orders/new", title: "Order from supplier", body: "Scan the supplier's tag. Stock is added.", icon: PackagePlus },
-  { href: "/bills/new", title: "Bill a customer", body: "Scan the tag. Make the GST bill from stock.", icon: Receipt },
+  { href: "/customer-orders/new", title: "Customer order form", body: "Scan tags, tick what the customer wants, save or bill.", icon: ScanLine },
+  { href: "/orders/new", title: "Order from supplier", body: "Make a purchase order for a supplier.", icon: PackagePlus },
 ];
 
 function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
 }
 
-const TASKS = ["/orders/new", "/bills/new", "/tags/new"];
+const TASKS = ["/customer-orders/new", "/orders/new", "/bills/new", "/tags/new"];
 
 export function SideNav() {
   const pathname = usePathname();
@@ -31,7 +31,7 @@ export function SideNav() {
     <nav className="flex flex-col gap-1 px-3">
       <div className="mb-4 grid gap-2">
         {ACTIONS.map(({ href, title, icon: Icon }, i) => (
-          <Link key={href} href={href} className={`btn w-full justify-start px-4 ${i === 0 ? "btn-outline" : "btn-primary"}`}>
+          <Link key={href} href={href} className={`btn w-full justify-start px-4 ${i === 0 ? "btn-primary" : "btn-outline"}`}>
             <Icon size={19} /> {title}
           </Link>
         ))}
@@ -57,10 +57,7 @@ export function SideNav() {
 
 const BOTTOM = [LINKS[0], LINKS[1], null, LINKS[2], LINKS[3]] as const;
 
-/**
- * Phone navigation: four sections and a raised + button in the middle that asks
- * which job to start: ordering from a supplier or billing a customer.
- */
+/** Phone navigation: four sections and a raised + button that asks which job to start. */
 export function BottomNav() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -82,18 +79,13 @@ export function BottomNav() {
             </div>
             <div className="grid gap-3">
               {ACTIONS.map(({ href, title, body, icon: Icon }, i) => (
-                <Link
-                  key={href}
-                  href={href}
-                  onClick={() => setOpen(false)}
-                  className={`flex items-center gap-4 rounded-2xl p-4 ${i === 1 ? "bg-accent text-white" : "border border-line bg-surface"}`}
-                >
-                  <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl ${i === 1 ? "bg-white/15" : "bg-accent-soft text-accent"}`}>
+                <Link key={href} href={href} onClick={() => setOpen(false)} className={`flex items-center gap-4 rounded-2xl p-4 ${i === 0 ? "bg-accent text-white" : "border border-line bg-surface"}`}>
+                  <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl ${i === 0 ? "bg-white/15" : "bg-accent-soft text-accent"}`}>
                     <Icon size={24} />
                   </span>
                   <span className="min-w-0">
                     <span className="block text-base font-extrabold">{title}</span>
-                    <span className={`block text-sm ${i === 1 ? "text-white/80" : "text-muted"}`}>{body}</span>
+                    <span className={`block text-sm ${i === 0 ? "text-white/80" : "text-muted"}`}>{body}</span>
                   </span>
                 </Link>
               ))}
@@ -111,7 +103,7 @@ export function BottomNav() {
                   <button
                     type="button"
                     onClick={() => setOpen(true)}
-                    aria-label="Start: order from supplier or bill a customer"
+                    aria-label="Start: customer order form or order from supplier"
                     className="-mt-6 mb-1 grid h-[60px] w-[60px] place-items-center rounded-full bg-accent text-white shadow-lg ring-4 ring-background transition-transform active:scale-95"
                   >
                     <Plus size={28} />

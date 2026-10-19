@@ -14,7 +14,7 @@ export default async function EditOrderPage({ params }: PageProps<"/orders/[id]/
 
   return (
     <>
-      <PageHeader back={{ href: `/orders/${id}`, label: `Order ${found.order.orderNo}` }} title="Change supplier order" subtitle="Stock updates when you save." />
+      <PageHeader back={{ href: `/orders/${id}`, label: `Order ${found.order.orderNo}` }} title="Change supplier order" subtitle="Change sets or rates, then save." />
       <OrderClient catalog={catalog} initial={found} />
     </>
   );

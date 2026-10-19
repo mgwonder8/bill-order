@@ -5,9 +5,8 @@ import type { CellHookData, UserOptions } from "jspdf-autotable";
 import { formatRs } from "@/lib/money";
 import { formatDate, formatDateTime, formatTime } from "@/lib/dates";
 import { amountInWords } from "@/lib/words";
-import { lineQtyLabel, qtyLabel } from "@/lib/sets";
-import type { Bill, BillItem, Order, OrderItem, ShopInfo } from "@/lib/types";
-import type { SupplierDay } from "@/lib/store/data";
+import type { Bill, BillItem, CustomerOrder, CustomerOrderItem, Order, OrderItem, ShopInfo } from "@/lib/types";
+import type { CompileSupplier } from "@/lib/store/data";
 
 /*
  * A4 layout in millimetres. Every block measures its wrapped text before drawing,
@@ -56,11 +55,17 @@ function font(doc: JsPDF, style: "normal" | "bold", size: number, color: RGB) {
 }
 
 /** Shop block on the left, document title and a details box on the right. Returns the y below it. */
-function header(doc: JsPDF, shop: ShopInfo, title: string, meta: [string, string][]): number {
+function header(doc: JsPDF, shop: ShopInfo, title: string, meta: [string, string][], topNote?: string): number {
   doc.setFillColor(...ACCENT).rect(0, 0, PAGE_W, 3.2, "F");
+  // A line such as "Subject to Jalna jurisdiction" sits centred above everything else.
+  const o = topNote ? 5 : 0;
+  if (topNote) {
+    font(doc, "bold", 7.6, MUTED);
+    doc.text(topNote.toUpperCase(), PAGE_W / 2, 9.2, { align: "center", charSpace: 0.4 });
+  }
 
   const leftW = 108;
-  let y = 15;
+  let y = 15 + o;
   font(doc, "bold", 15, INK);
   const name = wrap(doc, shop.name, leftW);
   doc.text(name, M, y);
@@ -78,10 +83,10 @@ function header(doc: JsPDF, shop: ShopInfo, title: string, meta: [string, string
   const boxW = 64;
   const boxX = PAGE_W - M - boxW;
   font(doc, "bold", 12.5, ACCENT);
-  doc.text(title, PAGE_W - M, 15, { align: "right" });
+  doc.text(title, PAGE_W - M, 15 + o, { align: "right" });
 
   const rowH = 5.4;
-  const boxY = 19;
+  const boxY = 19 + o;
   const boxH = meta.length * rowH + 3.6;
   doc.setFillColor(...PANEL).setDrawColor(...LINE).setLineWidth(0.2);
   doc.roundedRect(boxX, boxY, boxW, boxH, 1.6, 1.6, "FD");
@@ -226,12 +231,20 @@ export async function orderPdf(shop: ShopInfo, order: Order, items: OrderItem[])
 
 export async function billPdf(shop: ShopInfo, bill: Bill, items: BillItem[]) {
   const { doc, autoTable } = await newDoc();
-  let y = header(doc, shop, "TAX INVOICE", [
-    ["Bill no", bill.billNo],
-    ["Date", formatDate(bill.createdAt)],
-    ["Time", formatTime(bill.createdAt)],
-    ["Place of supply", shop.state],
-  ]);
+  const withGst = bill.gstMode === "with";
+  let y = header(
+    doc,
+    shop,
+    withGst ? "TAX INVOICE" : "BILL",
+    [
+      ["Bill no", bill.billNo],
+      ["Date", formatDate(bill.createdAt)],
+      ["Time", formatTime(bill.createdAt)],
+      ...(bill.orderNo ? ([["Order no", bill.orderNo]] as [string, string][]) : []),
+      ["Place of supply", shop.state],
+    ],
+    `Subject to ${shop.jurisdiction} jurisdiction`
+  );
   y = partyBox(
     doc,
     "Bill to",
@@ -243,22 +256,22 @@ export async function billPdf(shop: ShopInfo, bill: Bill, items: BillItem[]) {
   );
 
   autoTable(doc, {
-    ...tableOptions([7, 33, 17, 22, 16, 10, 15, 20, 20, 22], [4, 5, 6, 7, 8, 9]),
+    ...tableOptions([7, 31, 16, 22, 12, 12, 17, 21, 22, 22], [4, 5, 6, 7, 8, 9]),
     startY: y + 5,
-    head: [["#", "Article", "HSN", "Size set", "Qty", "Pcs", "Rate", "Amount", "Discount", "Taxable"]],
+    head: [["#", "Article", "HSN", "Size chart", "Sets", "Pcs", "Rate", "Amount", "Discount", withGst ? "Taxable" : "Net"]],
     body: items.map((i, n) => [
       n + 1,
       i.brand ? `${i.articleCode}\n${i.brand}` : i.articleCode,
       i.hsn || "-",
       sizeCell(i.size, i.sizes),
-      lineQtyLabel(i.sets, i.loosePieces).replace(" + ", "\n+ "),
+      i.sets,
       i.pieces,
       amt(i.rate),
       amt(i.grossAmount),
       i.discountPct ? `${i.discountPct}%\n-${amt(i.discountAmount)}` : "-",
       amt(i.taxableAmount),
     ]),
-    foot: [["", "Total", "", "", "", bill.totalPieces, "", amt(bill.grossAmount), bill.discountAmount ? `-${amt(bill.discountAmount)}` : "-", amt(bill.taxableAmount)]],
+    foot: [["", "Total", "", "", bill.totalSets, bill.totalPieces, "", amt(bill.grossAmount), bill.discountAmount ? `-${amt(bill.discountAmount)}` : "-", amt(bill.taxableAmount)]],
   });
 
   // Summary: words/notes on the left, totals on the right, signature below. Measured first, drawn as one block.
@@ -270,7 +283,7 @@ export async function billPdf(shop: ShopInfo, bill: Bill, items: BillItem[]) {
   const words = wrap(doc, amountInWords(bill.total), leftW - 8);
   const wordsH = 7 + words.length * lh(doc) + 2.5;
   font(doc, "normal", 8.2, MUTED);
-  const extra = [`Total: ${bill.totalPieces} pieces (${qtyLabel(bill.totalPieces)})`, bill.notes ? `Note: ${bill.notes}` : "", shop.bank ? `Bank: ${shop.bank}` : ""]
+  const extra = [`Total: ${bill.totalSets} sets = ${bill.totalPieces} pieces`, withGst ? "" : "GST not charged on this bill.", bill.notes ? `Note: ${bill.notes}` : "", shop.bank ? `Bank: ${shop.bank}` : ""]
     .filter(Boolean)
     .flatMap((l) => wrap(doc, l, leftW));
   const leftH = wordsH + 3 + extra.length * lh(doc);
@@ -278,9 +291,13 @@ export async function billPdf(shop: ShopInfo, bill: Bill, items: BillItem[]) {
   const rows: [string, string][] = [
     ["Amount", amt(bill.grossAmount)],
     ...(bill.discountAmount > 0 ? ([["Less discount", `-${amt(bill.discountAmount)}`]] as [string, string][]) : []),
-    ["Taxable value", amt(bill.taxableAmount)],
-    [`CGST @ ${bill.cgstRate}%`, amt(bill.cgstAmount)],
-    [`SGST @ ${bill.sgstRate}%`, amt(bill.sgstAmount)],
+    ...(withGst
+      ? ([
+          ["Taxable value", amt(bill.taxableAmount)],
+          [`CGST @ ${bill.cgstRate}%`, amt(bill.cgstAmount)],
+          [`SGST @ ${bill.sgstRate}%`, amt(bill.sgstAmount)],
+        ] as [string, string][])
+      : ([["Net amount", amt(bill.taxableAmount)]] as [string, string][])),
     ...(bill.roundOff !== 0 ? ([["Round off", amt(bill.roundOff)]] as [string, string][]) : []),
   ];
   const rowH = 5.6;
@@ -324,13 +341,45 @@ export async function billPdf(shop: ShopInfo, bill: Bill, items: BillItem[]) {
   return { blob: doc.output("blob"), filename: `Bill_${slug(bill.billNo)}_${slug(bill.customerName)}.pdf` };
 }
 
-// ---------- Daily supplier sheet ----------
+// ---------- Customer order form ----------
 
-export async function supplierPdf(shop: ShopInfo, day: string, suppliers: SupplierDay[], compiledAt: string) {
+export async function customerOrderPdf(shop: ShopInfo, order: CustomerOrder, items: CustomerOrderItem[]) {
+  const { doc, autoTable } = await newDoc();
+  let y = header(doc, shop, "ORDER FORM", [
+    ["Order no", order.orderNo],
+    ["Date", formatDate(order.createdAt)],
+    ["Time", formatTime(order.createdAt)],
+  ]);
+  y = partyBox(
+    doc,
+    "Customer",
+    order.customerName,
+    [[order.customerPhone, order.customerGstin && `GSTIN: ${order.customerGstin}`].filter(Boolean).join("   |   "), order.customerAddress],
+    M,
+    y,
+    CW
+  );
+
+  autoTable(doc, {
+    ...tableOptions([8, 38, 30, 32, 14, 16, 20, 24], [4, 5, 6, 7]),
+    startY: y + 5,
+    head: [["#", "Article code", "Brand", "Size chart", "Sets", "Pieces", "Rate (Rs.)", "Amount (Rs.)"]],
+    body: items.map((i, n) => [n + 1, i.articleCode, i.brand || "-", sizeCell(i.size, i.sizes), i.sets, i.pieces, amt(i.rate), amt(i.amount)]),
+    foot: [["", "Total", "", "", order.totalSets, order.totalPieces, "", amt(order.totalAmount)]],
+  });
+
+  noteLines(doc, ["Amounts are before GST. The bill shows the final amount.", order.notes ? `Note: ${order.notes}` : ""], lastY(doc) + 6, CW);
+  footer(doc, `Order form ${order.orderNo}  |  ${formatDateTime(order.createdAt)}  |  ${shop.name}`);
+  return { blob: doc.output("blob"), filename: `Order_${slug(order.orderNo)}_${slug(order.customerName)}.pdf` };
+}
+
+// ---------- Daily compile (what to order from each supplier) ----------
+
+export async function compilePdf(shop: ShopInfo, day: string, suppliers: CompileSupplier[], compiledAt: string) {
   const { doc, autoTable } = await newDoc();
   suppliers.forEach((sup, idx) => {
     if (idx > 0) doc.addPage();
-    let y = header(doc, shop, "SOLD TODAY", [
+    let y = header(doc, shop, "ORDER REQUIREMENT", [
       ["For date", formatDate(day)],
       ["Compiled", formatDateTime(compiledAt)],
     ]);
@@ -339,17 +388,20 @@ export async function supplierPdf(shop: ShopInfo, day: string, suppliers: Suppli
     const right = partyBox(doc, "From", shop.name, [shop.gstin ? `GSTIN: ${shop.gstin}` : "", shop.phone], M + half + 6, y, half);
     y = Math.max(left, right);
 
+    const body: (string | number)[][] = [];
+    let n = 0;
+    for (const b of sup.brands) for (const l of b.lines) body.push([++n, b.brand, l.articleCode, sizeCell(l.size, l.sizes), l.sets, l.pieces]);
     autoTable(doc, {
-      ...tableOptions([8, 40, 34, 24, 22, 14, 19, 21], [4, 5, 6, 7]),
+      ...tableOptions([8, 40, 46, 46, 20, 22], [4, 5]),
       startY: y + 5,
-      head: [["#", "Article code", "Brand / Fabric", "Size set", "Qty", "Pieces", "Your rate", "Amount (Rs.)"]],
-      body: sup.lines.map((l, n) => [n + 1, l.articleCode, [l.brand, l.fabric].filter(Boolean).join(" / ") || "-", sizeCell(l.size, l.sizes), qtyLabel(l.pieces).replace(" + ", "\n+ "), l.pieces, amt(l.rate), amt(l.amount)]),
-      foot: [["", "Total", "", "", "", sup.totalPieces, "", amt(sup.totalAmount)]],
+      head: [["#", "Brand", "Article code", "Size chart", "Sets", "Pieces"]],
+      body,
+      foot: [["", "Total", "", "", sup.totalSets, sup.totalPieces]],
     });
 
-    noteLines(doc, [`Bills included: ${sup.billNos.join(", ")}`, "1 set = 24 pieces. Amounts are at your tag rate, before GST."], lastY(doc) + 6, CW);
+    noteLines(doc, [`Compiled from customer orders: ${sup.orderNos.join(", ")}`], lastY(doc) + 6, CW);
   });
-  footer(doc, `Sold today  |  ${formatDate(day)}  |  ${shop.name}`);
+  footer(doc, `Order requirement  |  ${formatDate(day)}  |  ${shop.name}`);
   const name = suppliers.length === 1 ? `_${slug(suppliers[0].supplierName)}` : "_All_suppliers";
-  return { blob: doc.output("blob"), filename: `Sold_${day}${name}.pdf` };
+  return { blob: doc.output("blob"), filename: `Order_requirement_${day}${name}.pdf` };
 }

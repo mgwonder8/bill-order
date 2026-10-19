@@ -75,14 +75,17 @@ export function OrderClient({
   catalog: savedCatalog,
   initial,
   preset = [],
+  presetSets = {},
 }: {
   catalog: ArticleSize[];
   initial?: { order: Order; items: OrderItem[] };
   preset?: ArticleSize[];
+  /** Sets per article size when the order is pre-filled from the day's compile. */
+  presetSets?: Record<string, number>;
 }) {
   const router = useRouter();
   const [catalog, setCatalog] = useState<ArticleSize[]>(savedCatalog);
-  const [lines, setLines] = useState<Line[]>(() => initial?.items.map(fromSaved) ?? preset.map(fromCatalog));
+  const [lines, setLines] = useState<Line[]>(() => initial?.items.map(fromSaved) ?? preset.map((z) => ({ ...fromCatalog(z), sets: Math.max(1, presetSets[z.id] ?? 1) })));
   const [notes, setNotes] = useState(initial?.order.notes ?? "");
   const [query, setQuery] = useState("");
   const [toast, setToast] = useState<Toast>(null);
@@ -307,7 +310,7 @@ export function OrderClient({
 
         {missingSell > 0 && (
           <p className="rounded-xl bg-warn-soft px-3 py-2.5 text-sm font-medium text-warn">
-            {missingSell} item{missingSell === 1 ? " has" : "s have"} no selling price yet. You can add it now, later in Stock, or type it on the bill.
+            {missingSell} item{missingSell === 1 ? " has" : "s have"} no selling price yet. It can also be set on the customer order form.
           </p>
         )}
         {error && <p className="alert-error">{error}</p>}

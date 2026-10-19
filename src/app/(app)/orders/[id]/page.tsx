@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Boxes, CheckCircle2, Pencil } from "lucide-react";
+import { CheckCircle2, Pencil } from "lucide-react";
 import { requireUser } from "@/lib/session";
 import { getOrder } from "@/lib/store/data";
 import { formatINR } from "@/lib/money";
@@ -36,7 +36,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         <div className="no-print rise mb-4 flex items-center gap-3 rounded-2xl bg-ok-soft px-4 py-3 text-ok">
           <CheckCircle2 size={22} className="shrink-0" />
           <p className="font-bold">
-            Order saved. {order.totalPieces} pcs added to stock.
+            Purchase order saved. Send it to {order.supplierName}.
           </p>
         </div>
       )}
@@ -47,18 +47,12 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
           <DocActions shop={shop} doc={{ kind: "order", order, items }} print compact />
         </Card>
         <Card className="flex items-center gap-4 p-5">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent">
-            <Boxes size={20} />
-          </span>
           <div className="min-w-0 flex-1">
             <p className="font-extrabold tnum">
-              {order.totalSets} sets · {order.totalPieces} pcs in stock
+              {order.totalSets} sets · {order.totalPieces} pcs
             </p>
-            <p className="text-sm text-muted">Added when this order was saved.</p>
+            <p className="text-sm text-muted tnum">At your rates: {formatINR(order.totalAmount)}</p>
           </div>
-          <Link href="/stock" className="btn btn-soft btn-sm">
-            Stock
-          </Link>
         </Card>
       </div>
 

@@ -50,7 +50,8 @@ export type BillMoney = {
   total: number;
 };
 
-export function billMoney(lines: { sets: number; pieces: number; rate: number; discountPct?: number }[]): BillMoney {
+/** gstMode "with" adds CGST + SGST on top of the taxable value; "without" makes a plain bill with no GST. */
+export function billMoney(lines: { sets: number; pieces: number; rate: number; discountPct?: number }[], gstMode: "with" | "without" = "with"): BillMoney {
   let totalSets = 0;
   let totalPieces = 0;
   let grossAmount = 0;
@@ -65,8 +66,10 @@ export function billMoney(lines: { sets: number; pieces: number; rate: number; d
   grossAmount = money(grossAmount);
   discountAmount = money(discountAmount);
   const taxableAmount = money(grossAmount - discountAmount);
-  const cgstAmount = money((taxableAmount * CGST_RATE) / 100);
-  const sgstAmount = money((taxableAmount * SGST_RATE) / 100);
+  const cgstRate = gstMode === "with" ? CGST_RATE : 0;
+  const sgstRate = gstMode === "with" ? SGST_RATE : 0;
+  const cgstAmount = money((taxableAmount * cgstRate) / 100);
+  const sgstAmount = money((taxableAmount * sgstRate) / 100);
   const exact = money(taxableAmount + cgstAmount + sgstAmount);
   const total = Math.round(exact);
   return {
@@ -75,9 +78,9 @@ export function billMoney(lines: { sets: number; pieces: number; rate: number; d
     grossAmount,
     discountAmount,
     taxableAmount,
-    cgstRate: CGST_RATE,
+    cgstRate,
     cgstAmount,
-    sgstRate: SGST_RATE,
+    sgstRate,
     sgstAmount,
     roundOff: money(total - exact),
     total,
